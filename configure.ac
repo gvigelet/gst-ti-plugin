@@ -1,7 +1,7 @@
 AC_PREREQ(2.60)
 AC_CONFIG_MACRO_DIR([m4])
 
-AC_INIT(GStreamer Plug-ins for Texas Instruments SoC using CE, 1.0,
+AC_INIT(GStreamer TI Plugins, 1.0,
     http://ridgerun.github.com, gst-ti-plugins)
 
 AG_GST_INIT
@@ -59,10 +59,18 @@ dnl make GST_CFLAGS and GST_LIBS available
 AC_SUBST(GST_CFLAGS)
 AC_SUBST(GST_LIBS)
 
+dnl Check for Doxygen
+AC_CHECK_PROGS([DOXYGEN], [doxygen])
+if test -z "$DOXYGEN";
+   then AC_MSG_WARN([Doxygen not found - continuing without Doxygen support])
+fi
+AM_CONDITIONAL([HAVE_DOXYGEN], [test -n "$DOXYGEN"])AM_COND_IF([HAVE_DOXYGEN], [AC_CONFIG_FILES([docs/Doxyfile])])
+
+
 dnl make GST_MAJORMINOR available in Makefile.am
 AC_SUBST(GST_MAJORMINOR)
 
-dnl If we need them, we can also use the base class libraries
+dnl We need also use the base class libraries
 PKG_CHECK_MODULES(GST_BASE, gstreamer-base-$GST_MAJORMINOR >= $GST_REQUIRED,
                   HAVE_GST_BASE=yes, HAVE_GST_BASE=no)
 
@@ -75,6 +83,34 @@ fi
 dnl make _CFLAGS and _LIBS available
 AC_SUBST(GST_BASE_CFLAGS)
 AC_SUBST(GST_BASE_LIBS)
+
+dnl We need also use the base class libraries
+PKG_CHECK_MODULES(GST_BASEVIDEO, gstreamer-basevideo-$GST_MAJORMINOR >= $GST_REQUIRED,
+                  HAVE_GST_BASEVIDEO=yes, HAVE_GST_BASEVIDEO=no)
+
+dnl Give a warning if we don't have gstreamer libs
+dnl you can turn this into an error if you need them
+if test "x$HAVE_GST_BASEVIDEO" = "xno"; then
+  AC_MSG_NOTICE(no GStreamer base video class libraries found (gstreamer-basevideo-$GST_MAJORMINOR))
+fi
+
+dnl make _CFLAGS and _LIBS available
+AC_SUBST(GST_BASEVIDEO_CFLAGS)
+AC_SUBST(GST_BASEVIDEO_LIBS)
+
+dnl We need also use the good class libraries
+PKG_CHECK_MODULES(GST_GOOD, gstreamer-good-$GST_MAJORMINOR >= $GST_REQUIRED,
+                  HAVE_GST_GOOD=yes, HAVE_GST_GOOD=no)
+
+dnl Give a warning if we don't have gstreamer libs
+dnl you can turn this into an error if you need them
+if test "x$HAVE_GST_GOOD" = "xno"; then
+  AC_MSG_NOTICE(no GStreamer good class libraries found (gstreamer-good-$GST_MAJORMINOR))
+fi
+
+dnl make _CFLAGS and _LIBS available
+AC_SUBST(GST_GOOD_CFLAGS)
+AC_SUBST(GST_GOOD_LIBS)
 
 dnl set the plugindir where plugins should be installed
 if test "x${prefix}" = "x$HOME"; then
@@ -111,10 +147,13 @@ if test "x${platform}" = "xdm36x" ; then
 
     AC_SUBST(CODECS_CFLAGS)
     AC_SUBST(CODECS_LIBS)
+    AC_DEFINE([H264_ENCODER_ACCEPTS_NV12],[1],[H264 encoders accept NV12 format])
 fi
 
 if test "x$HAVE_CODECS" = "xno" ; then
     AC_MSG_ERROR([no codec library know for the platform ${platform}])
 fi
 
-AC_OUTPUT(Makefile m4/Makefile gst/Makefile gst/ti/Makefile gst-libs/Makefile gst-libs/gst/Makefile gst-libs/gst/cmem/Makefile)
+AC_OUTPUT(Makefile m4/Makefile gst/Makefile gst/ti/Makefile gst-libs/Makefile gst-libs/gst/Makefile gst-libs/gst/cmem/Makefile docs/Makefile)
+
+

@@ -1,4 +1,4 @@
-SUBDIRS = m4 gst gst-libs
+SUBDIRS = m4 gst-libs gst docs
 
 EXTRA_DIST = autogen.sh gst-autogen.sh
 

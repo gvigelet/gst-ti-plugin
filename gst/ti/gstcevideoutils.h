@@ -1,9 +1,7 @@
 /*
- * gsttiplugin.h
- *
  * Authors:
- *      Diego Dompe, ddompe@gmail.com
- *      Luis Arce, luis.arce@ridgerun.com
+ *   Diego Dompe <ddompe@gmail.com>
+ *   Luis Arce <luis.arce@rigerun.com>
  *
  * Copyright (C) 2012 RidgeRun	
  *
@@ -18,16 +16,21 @@
  *
  */
 
-#ifndef _GST_TIPLUGIN_H_
-#define _GST_TIPLUGIN_H_
+#ifndef ___GST_CE_VIDEO_UTILS_H__
+#define ___GST_CE_VIDEO_UTILS_H__
 
 #include <gst/gst.h>
-#include <config.h>
+#include <gst/video/video.h>
 
 #include <xdc/std.h>
+#include <ti/xdais/xdas.h>
 #include <ti/sdo/ce/Engine.h>
+#include <ti/sdo/ce/video1/videnc1.h>
 
-/* The global EngineHandle */
-extern Engine_Handle engine_handle;
+XDAS_Int32
+gst_ce_video_utils_gst_video_info_to_xdm_chroma_format(GstVideoFormat format);
 
-#endif
+XDAS_Int32
+gst_ce_video_utils_gst_video_info_to_xdm_content_type(GstVideoFormat format);
+
+#endif /* ___GST_CE_VIDEO_UTILS_H__ */

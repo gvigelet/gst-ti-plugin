@@ -27,6 +27,7 @@
 #include <xdc/std.h>
 #include <ti/sdo/ce/Engine.h>
 #include <ti/sdo/ce/video1/videnc1.h>
+#include <pthread.h>
 
 
 #define GST_CAT_DEFAULT gst_ce_base_encoder_debug
@@ -123,6 +124,13 @@ gst_ce_base_encoder_init (GstCEBaseEncoder * base_encoder,
   base_encoder->codec_handle = NULL;
   base_encoder->submitted_input_arguments = g_malloc0(sizeof(VIDENC1_InArgs));
   base_encoder->submitted_output_arguments = g_malloc0(sizeof(VIDENC1_OutArgs));
+  base_encoder->submitted_push_output_buffers = NULL;
+  
+  /* Allocate the push out put buffer */
+  //base_encoder->submitted_push_output_buffers = gst_buffer_new_and_alloc(DEFAULT_BUF_SIZE);
+  //if(base_encoder->submitted_push_output_buffers == NULL) {
+   // GST_DEBUG_OBJECT(base_encoder,"Memory couldn't be allocated for put output buffer");
+  //}
   
   /* Obtain the allocator */
   GstAllocator *buffer_allocator = gst_allocator_find("ContiguosMemory");
@@ -131,9 +139,7 @@ gst_ce_base_encoder_init (GstCEBaseEncoder * base_encoder,
   }
   
   /* Allocate the input buffer with alignment of 4 bytes and with default buffer size */
-  g_print("Antes\n");
   base_encoder->submitted_input_buffers = gst_buffer_new_allocate (buffer_allocator, DEFAULT_BUF_SIZE, 3);
-  g_print("Despues\n");
   
   if(base_encoder->submitted_input_buffers == NULL) {
     GST_DEBUG_OBJECT(base_encoder,"Memory couldn't be allocated for input buffer");
@@ -144,6 +150,12 @@ gst_ce_base_encoder_init (GstCEBaseEncoder * base_encoder,
   if(base_encoder->submitted_output_buffers == NULL) {
     GST_DEBUG_OBJECT(base_encoder,"Memory couldn't be allocated for output buffer");
   }
+  
+  /* Allocate the thread for the async encode process */
+  base_encoder->processAsyncthread = g_malloc0(sizeof(pthread_t)); 
+  
+  /* Allocate the arguments for the async encode process */
+  base_encoder->arguments = g_malloc0(sizeof(processAsyncArguments));
   
   GST_DEBUG_OBJECT(base_encoder,"Leave _init base encoder");
   
@@ -200,67 +212,74 @@ gst_ce_base_encoder_shrink_output_buffer (GstCEBaseEncoder * base_encoder,
 /* Process the encode algorithm */
 void
 gst_ce_base_encoder_encode (GstCEBaseEncoder * base_encoder,
-    GstBuffer * input_buffer, GstBuffer * output_buffer)
+    GstBuffer * input_buffer, GstBuffer * output_buffer, gconstpointer raw_data, 
+    gint new_buf_size, gint buffer_duration)
 {
-  IVIDEO1_BufDescIn       inBufDesc;
-  XDM_BufDesc outBufDesc;
-  VIDENC1_InArgs          *inArgs;
-  VIDENC1_OutArgs         *outArgs;
   
-  GstMapInfo info_in;
-  GstMapInfo info_out;
-  int outBufSizeArray[1];
-  int status;
+  GstBuffer *buffer_push_out;
+  pthread_t processAsyncthread;
+  gboolean processAsyncReturn;
   
-  inArgs = (VIDENC1_InArgs *)base_encoder->submitted_input_arguments;
-  outArgs = (VIDENC1_OutArgs *)base_encoder->submitted_output_arguments;
+  static gboolean first_buffer = TRUE;
   
-  /* Access the data of the input and output buffer */
-  if(!gst_buffer_map (input_buffer, &info_in, GST_MAP_WRITE)) {
-    GST_DEBUG_OBJECT(base_encoder,"Can't access data from input buffer");
-  }
-    if(!gst_buffer_map (output_buffer, &info_out, GST_MAP_WRITE)) {
-    GST_DEBUG_OBJECT(base_encoder,"Can't access data from output buffer");
-  }
-  
-  /* Prepare the input buffer descriptor for the encode process */
-  inBufDesc.frameWidth = GST_VIDEO_INFO_WIDTH(&GST_CE_BASE_VIDEO_ENCODER(base_encoder)->video_info);
-  inBufDesc.frameHeight = GST_VIDEO_INFO_HEIGHT(&GST_CE_BASE_VIDEO_ENCODER(base_encoder)->video_info);
-  inBufDesc.framePitch = GST_VIDEO_INFO_PLANE_STRIDE(&GST_CE_BASE_VIDEO_ENCODER(base_encoder)->video_info, 0);
-  
-  /* The next piece of code depend of the mime type of the buffer */
-  inBufDesc.bufDesc[0].bufSize = gst_buffer_get_size(input_buffer);
-  inBufDesc.bufDesc[0].buf = info_in.data;
-  inBufDesc.bufDesc[1].bufSize = gst_buffer_get_size(input_buffer);
-  inBufDesc.bufDesc[1].buf = info_in.data + (gst_buffer_get_size(input_buffer) * (2 / 3));
-  inBufDesc.numBufs = 2;
-  
-  /* Prepare the output buffer descriptor for the encode process */
-  outBufSizeArray[0]                  = gst_buffer_get_size(output_buffer);
-  outBufDesc.numBufs                  = 1;
-  outBufDesc.bufs                     = &(info_out.data);
-  outBufDesc.bufSizes                 = outBufSizeArray;
-  
-  /* Set output and input arguments for the encode process */
-  inArgs->size                         = sizeof(VIDENC1_InArgs);
-  inArgs->inputID                      = 1;
-  inArgs->topFieldFirstFlag            = 1;
-  
-  outArgs->size                        = sizeof(VIDENC1_OutArgs);
-  
-  /* Procees la encode and check for errors*/
-  //g_print("Size before: %d\n", gst_buffer_get_size(output_buffer));
-  status = VIDENC1_process(base_encoder->codec_handle, &inBufDesc, &outBufDesc, inArgs, outArgs);
-
+  /* Entry only once */
+  if(first_buffer == TRUE) {
+    /* Prepare output and input buffers */
+    gst_buffer_resize(input_buffer, 0, new_buf_size);
+    gst_buffer_resize(output_buffer, 0, new_buf_size);
+    gsize bytes_copied = gst_buffer_fill (input_buffer, 0, raw_data, new_buf_size);
+    if(bytes_copied == 0) {
+      GST_DEBUG_OBJECT(base_encoder,"Can't obtain data from buffer to input buffer");
+    }
     
-  /* Re alloc the output buffer with the encode data */
-  //output_buffer = gst_buffer_new_and_alloc(outArgs.encodedBuf.bufSize);
-  //gst_buffer_fill (output_buffer, 0, outArgs.encodedBuf.buf, outArgs.encodedBuf.bufSize);
-  //g_print("Size after: %d\n", gst_buffer_get_size(output_buffer));
-      
-  if (status != VIDENC1_EOK) {
-    GST_WARNING_OBJECT(base_encoder,"Incorrect encode process with extended error: 0x%x", 
-      (unsigned int) outArgs->extendedError);
+    /* Prepare the arguments for the asynchronous process */
+    base_encoder->arguments->base_encoder = base_encoder;
+    base_encoder->arguments->input_buffer = input_buffer;
+    base_encoder->arguments->output_buffer = output_buffer; 
+    
+    /* Prepare the thread for encode and init the process*/
+    int ret = pthread_create(base_encoder->processAsyncthread, NULL, 
+                             CE_BASE_ENCODER_GET_CLASS(base_encoder)->encoder_process_async, 
+                             base_encoder->arguments);
+    
+    first_buffer = FALSE;
   }
-  
+  else {
+    /* wait for previus call of processAsync */
+    pthread_join(*(base_encoder->processAsyncthread), NULL);
+    
+    /* Prepare the push output buffer */
+    VIDENC1_OutArgs outArgs = *((VIDENC1_OutArgs *)base_encoder->submitted_output_arguments);
+    buffer_push_out = gst_buffer_new_and_alloc(outArgs.encodedBuf.bufSize);
+    
+    if(buffer_push_out == NULL) {
+      GST_DEBUG_OBJECT(base_encoder,"Memory couldn't be allocated for push output buffer");
+    }
+    
+    gst_buffer_fill(buffer_push_out, 0, outArgs.encodedBuf.buf, outArgs.encodedBuf.bufSize);
+    base_encoder->submitted_push_output_buffers = buffer_push_out;
+    
+    /* Prepare output and input buffers */
+    gst_buffer_resize(input_buffer, 0, new_buf_size);
+    gst_buffer_resize(output_buffer, 0, new_buf_size);
+    gsize bytes_copied = gst_buffer_fill (input_buffer, 0, raw_data, new_buf_size);
+    if(bytes_copied == 0) {
+      GST_DEBUG_OBJECT(base_encoder,"Can't obtain data from buffer to input buffer");
+    }
+    
+    //* Prepare the arguments for the asynchronous process */
+    base_encoder->arguments->base_encoder = base_encoder;
+    base_encoder->arguments->input_buffer = input_buffer;
+    base_encoder->arguments->output_buffer = output_buffer; 
+    
+    /* Prepare the thread for encode */
+    int ret = pthread_create(base_encoder->processAsyncthread, NULL, 
+                             CE_BASE_ENCODER_GET_CLASS(base_encoder)->encoder_process_async, 
+                             base_encoder->arguments);
+    
+    /* Encode the buffer asynchronous */ 
+    //gst_ce_base_encoder_process_async(base_encoder, input_buffer, output_buffer);
+     
+  }
+ 
 }

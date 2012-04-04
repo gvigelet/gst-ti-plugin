@@ -265,7 +265,7 @@ gst_ce_base_video_encoder_default_sink_query (GstPad * pad, GstObject * parent, 
 
 /* Default implementation for _chain */
 static GstFlowReturn
-gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
+  gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
     GstBuffer * buffer)
 {
   
@@ -279,47 +279,41 @@ gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
   GstBuffer *buffer_in;
   GstBuffer *buffer_out;
   GstBuffer *buffer_push_out;
+  GstBuffer *buffer_push_out2;
   
   /* Obtain and resize the input and output buffer */
   buffer_in = (GstBuffer *)GST_CE_BASE_ENCODER(video_encoder)->submitted_input_buffers;
   buffer_out = (GstBuffer *)GST_CE_BASE_ENCODER(video_encoder)->submitted_output_buffers;
-  gst_buffer_resize(buffer_in, 0, gst_buffer_get_size(buffer));
-  gst_buffer_resize(buffer_out, 0, gst_buffer_get_size(buffer));
   
   /* Access the data of the entry buffer and past it to a contiguos memory buffer */
   if(!gst_buffer_map (buffer, &info_buffer, GST_MAP_WRITE)) {
     GST_DEBUG_OBJECT(video_encoder,"Can't access data from buffer");
   }
-  gsize bytes_copied = gst_buffer_fill (buffer_in, 0, info_buffer.data, gst_buffer_get_size(buffer));
-  if(bytes_copied == 0) {
-    GST_DEBUG_OBJECT(video_encoder,"Can't obtain data from buffer to input buffer");
-  }
   
-  g_print("Size before: %d\n", gst_buffer_get_size(buffer_in));
-  gst_ce_base_encoder_encode (GST_CE_BASE_ENCODER(video_encoder), buffer_in, buffer_out);
-
-  /* Copy the meta data from the buffer with raw data */
-  gst_buffer_copy_into (buffer_out, buffer, GST_BUFFER_COPY_META, 0, -1);
+  gst_ce_base_encoder_encode (GST_CE_BASE_ENCODER(video_encoder), buffer_in, buffer_out, 
+    info_buffer.data, gst_buffer_get_size(buffer), GST_BUFFER_DURATION(buffer));
   
-  /* Prepare out buffer for push it */
-  VIDENC1_OutArgs outArgs = *((VIDENC1_OutArgs *)GST_CE_BASE_ENCODER(video_encoder)->submitted_output_arguments);
-  buffer_push_out = gst_buffer_new_and_alloc(outArgs.encodedBuf.bufSize);
+  buffer_push_out = GST_CE_BASE_ENCODER(video_encoder)->submitted_push_output_buffers;
   if(buffer_push_out == NULL) {
-    GST_DEBUG_OBJECT(video_encoder,"Memory couldn't be allocated for push output buffer");
+    /* Only obtain the next buffer */
+    ret = GST_FLOW_OK;
   }
-  gst_buffer_fill (buffer_push_out, 0, outArgs.encodedBuf.buf, outArgs.encodedBuf.bufSize);
-  gst_buffer_copy_into (buffer_push_out, buffer, GST_BUFFER_COPY_META, 0, -1);
+  else {
+    gst_buffer_copy_into (buffer_push_out, buffer, GST_BUFFER_COPY_META, 0, gst_buffer_get_size(buffer));
+    gst_buffer_copy_into (buffer_push_out, buffer, GST_BUFFER_COPY_TIMESTAMPS, 0, 
+                          gst_buffer_get_size(buffer));
+    gst_buffer_copy_into (buffer_push_out, buffer, GST_BUFFER_COPY_FLAGS, 0, -1);
   
-  g_print("Size after: %d\n", gst_buffer_get_size(buffer_push_out));
-  /*push the buffer and check for any error*/
-  ret = gst_pad_push (GST_CE_BASE_ENCODER(video_encoder)->src_pad, 
-    buffer_push_out);
-  
-  /* Free the push output buffer */
-  
-  if(GST_FLOW_OK != ret) {
-    GST_ERROR_OBJECT (video_encoder, "Push buffer return with error: %d", ret);
-  } 
+
+    
+    /*push the buffer and check for any error*/
+    ret = gst_pad_push (GST_CE_BASE_ENCODER(video_encoder)->src_pad, 
+      buffer_push_out);
+    
+    if(GST_FLOW_OK != ret) {
+      GST_ERROR_OBJECT (video_encoder, "Push buffer return with error: %d", ret);
+    } 
+  }
   
   GST_DEBUG_OBJECT(video_encoder,"LEAVE");
   return ret;

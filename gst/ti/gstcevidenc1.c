@@ -21,6 +21,13 @@
 #include <gstcevidenc1.h>
 #include <gstcevideoutils.h>
 
+#include <ti/sdo/ce/utils/xdm/XdmUtils.h>
+#include <ti/sdo/ce/visa.c>
+#include <ti/sdo/ce/Engine.c>
+#include <ti/xdais/dm/ividenc1.h>
+#include <pthread.h>
+
+
 
 #define GST_CAT_DEFAULT gst_ce_videnc1_debug
 GST_DEBUG_CATEGORY_STATIC (GST_CAT_DEFAULT);
@@ -29,6 +36,8 @@ enum
 {
   PROP_0,
 };
+
+
 
 static void
 gst_ce_videnc1_base_init (GstCEVIDENC1Class * klass)
@@ -179,6 +188,15 @@ gst_ce_videnc1_create (GstCEBaseEncoder * base_encoder) {
   base_encoder->codec_handle = VIDENC1_create(base_encoder->engine_handle,
                                               (Char *)base_encoder->codec_name,
                                               (VIDENC1_Params *)base_encoder->codec_params);
+  
+  /* Set the size of the message for the coprocessor */
+  IVIDENC1_Handle alg = VISA_getAlgHandle((VISA_Handle)base_encoder->codec_handle);
+  VISA_Handle visa = (VISA_Handle)alg;
+  visa->maxMsgSize = 1500;
+  visa->cmd = g_malloc0(sizeof(VISA_Msg) * visa->nCmds);
+  
+  
+  
   if (base_encoder->codec_handle == NULL){
   
     GST_ERROR("Failed to create the instance of the codec %s with the given parameters",
@@ -203,14 +221,135 @@ gst_ce_videnc1_process_sync (GstCEBaseEncoder * base_encoder,
 
 /* Implementation of process_async for encode the buffer in a asynchronous way */
 static gboolean
-gst_ce_videnc1_process_async (GstCEBaseEncoder * base_encoder,
-   GstBuffer * input_buffer, GstBuffer * output_buffer){
+gst_ce_videnc1_process_async (processAsyncArguments * arguments)
+{
+  
+  
+  /* Obtain the arguments */
+  GstCEBaseEncoder *base_encoder = arguments->base_encoder;
+  GstBuffer *input_buffer = arguments->input_buffer;
+  GstBuffer *output_buffer = arguments->output_buffer;
+  
+  IVIDEO1_BufDescIn       inBufDesc;
+  XDM_BufDesc outBufDesc;
+  VIDENC1_InArgs          *inArgs;
+  VIDENC1_OutArgs         *outArgs;
+  
+  GstMapInfo info_in;
+  GstMapInfo info_out;
+  int outBufSizeArray[1];
+  int status;
+  
+  inArgs = (VIDENC1_InArgs *)base_encoder->submitted_input_arguments;
+  outArgs = (VIDENC1_OutArgs *)base_encoder->submitted_output_arguments;
+
+  /* Access the data of the input and output buffer */
+  if(!gst_buffer_map (input_buffer, &info_in, GST_MAP_WRITE)) {
+    GST_DEBUG_OBJECT(base_encoder,"Can't access data from input buffer");
+  }
+    if(!gst_buffer_map (output_buffer, &info_out, GST_MAP_WRITE)) {
+    GST_DEBUG_OBJECT(base_encoder,"Can't access data from output buffer");
+  }
+  
+  /* Prepare the input buffer descriptor for the encode process */
+  inBufDesc.frameWidth = GST_VIDEO_INFO_WIDTH(&GST_CE_BASE_VIDEO_ENCODER(base_encoder)->video_info);
+  inBufDesc.frameHeight = GST_VIDEO_INFO_HEIGHT(&GST_CE_BASE_VIDEO_ENCODER(base_encoder)->video_info);
+  inBufDesc.framePitch = GST_VIDEO_INFO_PLANE_STRIDE(&GST_CE_BASE_VIDEO_ENCODER(base_encoder)->video_info, 0);
+  
+  /* The next piece of code depend of the mime type of the buffer */
+  inBufDesc.bufDesc[0].bufSize = gst_buffer_get_size(input_buffer);
+  inBufDesc.bufDesc[0].buf = info_in.data;
+  inBufDesc.bufDesc[1].bufSize = gst_buffer_get_size(input_buffer);
+  inBufDesc.bufDesc[1].buf = info_in.data + (gst_buffer_get_size(input_buffer) * (2 / 3));
+  inBufDesc.numBufs = 2;
+  
+  /* Prepare the output buffer descriptor for the encode process */
+  outBufSizeArray[0]                  = gst_buffer_get_size(output_buffer);
+  outBufDesc.numBufs                  = 1;
+  outBufDesc.bufs                     = &(info_out.data);
+  outBufDesc.bufSizes                 = outBufSizeArray;
+  
+  /* Set output and input arguments for the encode process */
+  inArgs->size                         = sizeof(VIDENC1_InArgs);
+  inArgs->inputID                      = 1;
+  inArgs->topFieldFirstFlag            = 1;
+  
+  outArgs->size                        = sizeof(VIDENC1_OutArgs);
+  
+  /* Procees la encode and check for errors*/
+  status = VIDENC1_process(base_encoder->codec_handle, &inBufDesc, &outBufDesc, inArgs, outArgs);
+  
+  if (status != VIDENC1_EOK) {
+    
+    GST_WARNING_OBJECT(base_encoder,"Incorrect async encode process with extended error: 0x%x", 
+      (unsigned int) outArgs->extendedError);
+    return FALSE;
+  }
+  
   return TRUE;
 }
 
 /* Implementarion of process_wait for wait any previews calls of the  process_async function */
 static gboolean
-gst_ce_videnc1_process_wait  (GstCEBaseEncoder * base_encoder, gint timeout){
+gst_ce_videnc1_process_wait  (GstCEBaseEncoder * base_encoder,
+    GstBuffer * input_buffer, GstBuffer * output_buffer, gint timeout){
+  
+  IVIDEO1_BufDescIn       inBufDesc;
+  XDM_BufDesc outBufDesc;
+  VIDENC1_InArgs          *inArgs;
+  VIDENC1_OutArgs         *outArgs;
+  
+  GstMapInfo info_in;
+  GstMapInfo info_out;
+  int outBufSizeArray[1];
+  int status;
+  
+  inArgs = (VIDENC1_InArgs *)base_encoder->submitted_input_arguments;
+  outArgs = (VIDENC1_OutArgs *)base_encoder->submitted_output_arguments;
+  
+  /* Access the data of the input and output buffer */
+  if(!gst_buffer_map (input_buffer, &info_in, GST_MAP_WRITE)) {
+    GST_DEBUG_OBJECT(base_encoder,"Can't access data from input buffer");
+  }
+    if(!gst_buffer_map (output_buffer, &info_out, GST_MAP_WRITE)) {
+    GST_DEBUG_OBJECT(base_encoder,"Can't access data from output buffer");
+  }
+  
+  /* Prepare the input buffer descriptor for the encode process */
+  inBufDesc.frameWidth = GST_VIDEO_INFO_WIDTH(&GST_CE_BASE_VIDEO_ENCODER(base_encoder)->video_info);
+  inBufDesc.frameHeight = GST_VIDEO_INFO_HEIGHT(&GST_CE_BASE_VIDEO_ENCODER(base_encoder)->video_info);
+  inBufDesc.framePitch = GST_VIDEO_INFO_PLANE_STRIDE(&GST_CE_BASE_VIDEO_ENCODER(base_encoder)->video_info, 0);
+  
+  /* The next piece of code depend of the mime type of the buffer */
+  inBufDesc.bufDesc[0].bufSize = gst_buffer_get_size(input_buffer);
+  inBufDesc.bufDesc[0].buf = info_in.data;
+  inBufDesc.bufDesc[1].bufSize = gst_buffer_get_size(input_buffer);
+  inBufDesc.bufDesc[1].buf = info_in.data + (gst_buffer_get_size(input_buffer) * (2 / 3));
+  inBufDesc.numBufs = 2;
+  
+  /* Prepare the output buffer descriptor for the encode process */
+  outBufSizeArray[0]                  = gst_buffer_get_size(output_buffer);
+  outBufDesc.numBufs                  = 1;
+  outBufDesc.bufs                     = &(info_out.data);
+  outBufDesc.bufSizes                 = outBufSizeArray;
+  
+  /* Set output and input arguments for the encode process */
+  inArgs->size                         = sizeof(VIDENC1_InArgs);
+  inArgs->inputID                      = 1;
+  inArgs->topFieldFirstFlag            = 1;
+  
+  outArgs->size                        = sizeof(VIDENC1_OutArgs);
+  
+  /* Procees la encode and check for errors*/
+  status = VIDENC1_processWait(base_encoder->codec_handle, &inBufDesc, &outBufDesc, inArgs, outArgs, timeout);
+
+  if (status != VIDENC1_EOK) {
+    GST_WARNING_OBJECT(base_encoder,"Incorrect return message from async encode process with extended error: 0x%x", 
+      (unsigned int) outArgs->extendedError);
+    return FALSE;
+  }
+    
+  
   return TRUE;
 }
 

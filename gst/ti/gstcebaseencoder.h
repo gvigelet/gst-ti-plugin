@@ -37,6 +37,7 @@ G_BEGIN_DECLS
   (G_TYPE_INSTANCE_GET_CLASS ((obj), GST_TYPE_CE_BASE_ENCODER, GstCEBaseEncoderClass  ))
 typedef struct _GstCEBaseEncoder GstCEBaseEncoder;
 typedef struct _GstCEBaseEncoderClass GstCEBaseEncoderClass;
+typedef struct _processAsyncArguments processAsyncArguments;
 
 /**
  * This is the base class for the CodecEngine based encoders
@@ -87,6 +88,10 @@ struct _GstCEBaseEncoder
   gpointer submitted_input_arguments;
   /* Output arguments of the encoder instance */
   gpointer submitted_output_arguments;
+  /* Thread for async encode process */
+  pthread_t *processAsyncthread;
+  /* Arguments for the async encode process */
+  processAsyncArguments *arguments
 
 };
 
@@ -100,9 +105,17 @@ struct _GstCEBaseEncoderClass
   gboolean (*encoder_create)      (GstCEBaseEncoder * base_encoder);
   gboolean (*encoder_process_sync) (GstCEBaseEncoder * base_encoder,
     GstBuffer * input_buffer, GstBuffer * output_buffer);
-  gboolean (*encoder_process_async) (GstCEBaseEncoder * base_encoder,
-    GstBuffer * input_buffer, GstBuffer * output_buffer);
-  gboolean (*encoder_process_wait)  (GstCEBaseEncoder * base_encoder, gint timeout);
+  gboolean (*encoder_process_async) (processAsyncArguments * arguments);
+  gboolean (*encoder_process_wait)  (GstCEBaseEncoder * base_encoder, 
+    GstBuffer * input_buffer, GstBuffer * output_buffer, gint timeout);
+};
+
+
+struct _processAsyncArguments
+{
+  GstCEBaseEncoder * base_encoder;
+  GstBuffer * input_buffer;
+  GstBuffer * output_buffer;
 };
 
 GType gst_ce_base_encoder_get_type (void);
@@ -143,7 +156,8 @@ void gst_ce_base_encoder_shrink_output_buffer (GstCEBaseEncoder * base_encoder,
  * @param output_buffer buffer with the result encode data
  */
 void gst_ce_base_encoder_encode (GstCEBaseEncoder * base_encoder,
-    GstBuffer * input_buffer, GstBuffer * output_buffer);
+    GstBuffer * input_buffer, GstBuffer * output_buffer, gconstpointer raw_data, 
+    gint new_buf_size, gint buffer_duration);
 
 
 /*--------------------*/
@@ -195,7 +209,7 @@ void gst_ce_base_encoder_encode (GstCEBaseEncoder * base_encoder,
 #define gst_ce_base_encoder_create(obj) \
   CE_BASE_ENCODER_GET_CLASS(obj)->encoder_create(GST_CE_BASE_ENCODER(obj))
 
-/** 
+/* 
  * @memberof _GstCEBaseEncoder
  * @fn gint32 gst_ce_base_encoder_process_async(_GstCEBaseEncoder *base_encoder, GstBuffer *input_buffer, GstBuffer *output_buffer)
  * @brief Abstract function that implements. Instance handles must not be concurrently accessed by multiple threads.
@@ -205,9 +219,9 @@ void gst_ce_base_encoder_encode (GstCEBaseEncoder * base_encoder,
  * @param output_buffer a pointer containing output buffers. 
  * @protected
  */
-#define gst_ce_base_encoder_process_async(obj, in_buf, out_buf) \
+/*#define gst_ce_base_encoder_process_async(obj, in_buf, out_buf) \
   CE_BASE_ENCODER_GET_CLASS(obj)->encoder_process_async(GST_CE_BASE_ENCODER(obj), in_buf, out_buf)
-
+*/
 /** 
  * @memberof _GstCEBaseEncoder
  * @fn gint32 gst_ce_base_encoder_process_wait(_GstCEBaseEncoder *base_encoder)
@@ -217,8 +231,8 @@ void gst_ce_base_encoder_encode (GstCEBaseEncoder * base_encoder,
  * @param base_encoder a pointer to a _GstCEBaseEncoder object
  * @protected
  */
-#define gst_ce_base_encoder_process_wait(obj) \
-  CE_BASE_ENCODER_GET_CLASS(obj)->encoder_process_wait(GST_CE_BASE_ENCODER(obj))
+#define gst_ce_base_encoder_process_wait(obj, in_buf, out_buf, time_out) \
+  CE_BASE_ENCODER_GET_CLASS(obj)->encoder_process_wait(GST_CE_BASE_ENCODER(obj), in_buf, out_buf, time_out)
 
 G_END_DECLS
 #endif

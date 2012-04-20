@@ -28,9 +28,9 @@
 #include <ti/sdo/ce/video1/videnc1.h>
 
 XDAS_Int32
-gst_ce_video_utils_gst_video_info_to_xdm_chroma_format(GstVideoFormat format);
+gst_ce_video_utils_gst_video_info_to_xdm_chroma_format (GstVideoFormat format);
 
 XDAS_Int32
-gst_ce_video_utils_gst_video_info_to_xdm_content_type(GstVideoFormat format);
+gst_ce_video_utils_gst_video_info_to_xdm_content_type (GstVideoFormat format);
 
 #endif /* ___GST_CE_VIDEO_UTILS_H__ */

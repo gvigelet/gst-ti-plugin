@@ -22,7 +22,7 @@
 #include <gst/gst.h>
 
 G_BEGIN_DECLS
-#define DEFAULT_BUF_SIZE 115200
+#define DEFAULT_BUF_SIZE 1382400
 #define GST_TYPE_CE_BASE_ENCODER \
   (gst_ce_base_encoder_get_type())
 #define GST_CE_BASE_ENCODER(obj) \
@@ -64,10 +64,10 @@ struct _GstCEBaseEncoder
 
   /* Members for encode process */
   char *codec_name;
-  
+
   /* Handler for the encoder instance */
   gpointer engine_handle;
-  
+
   /* Handler for the encoder instance */
   gpointer codec_handle;
 
@@ -91,7 +91,9 @@ struct _GstCEBaseEncoder
   /* Thread for async encode process */
   pthread_t *processAsyncthread;
   /* Arguments for the async encode process */
-  processAsyncArguments *arguments
+  processAsyncArguments *arguments;
+  /* Codec data for the encode data */
+  gpointer codec_data;
 
 };
 
@@ -99,23 +101,25 @@ struct _GstCEBaseEncoderClass
 {
   GstElementClass parent_class;
 
-  gboolean (*encoder_initialize_params)    (GstCEBaseEncoder * base_encoder);
-  gboolean (*encoder_control)       (GstCEBaseEncoder * base_encoder, gint cmd_id);
-  gboolean (*encoder_delete)          (GstCEBaseEncoder * base_encoder);
-  gboolean (*encoder_create)      (GstCEBaseEncoder * base_encoder);
-  gboolean (*encoder_process_sync) (GstCEBaseEncoder * base_encoder,
-    GstBuffer * input_buffer, GstBuffer * output_buffer);
-  gboolean (*encoder_process_async) (processAsyncArguments * arguments);
-  gboolean (*encoder_process_wait)  (GstCEBaseEncoder * base_encoder, 
-    GstBuffer * input_buffer, GstBuffer * output_buffer, gint timeout);
+    gboolean (*encoder_initialize_params) (GstCEBaseEncoder * base_encoder);
+    gboolean (*encoder_control) (GstCEBaseEncoder * base_encoder, gint cmd_id);
+    gboolean (*encoder_delete) (GstCEBaseEncoder * base_encoder);
+    gboolean (*encoder_create) (GstCEBaseEncoder * base_encoder);
+    gboolean (*encoder_process_sync) (GstCEBaseEncoder * base_encoder,
+      GstBuffer * input_buffer, GstBuffer * output_buffer);
+    gboolean (*encoder_process_async) (processAsyncArguments * arguments);
+    gboolean (*encoder_process_wait) (GstCEBaseEncoder * base_encoder,
+      GstBuffer * input_buffer, GstBuffer * output_buffer, gint timeout);
+  GstBuffer *(*encoder_generate_codec_data) (GstCEBaseEncoder * base_encoder,
+      GstBuffer * input_buffer, GstBuffer * output_buffer);
 };
 
 
 struct _processAsyncArguments
 {
-  GstCEBaseEncoder * base_encoder;
-  GstBuffer * input_buffer;
-  GstBuffer * output_buffer;
+  GstCEBaseEncoder *base_encoder;
+  GstBuffer *input_buffer;
+  GstBuffer *output_buffer;
 };
 
 GType gst_ce_base_encoder_get_type (void);
@@ -155,9 +159,8 @@ void gst_ce_base_encoder_shrink_output_buffer (GstCEBaseEncoder * base_encoder,
  * @param input_buffer buffer to be encode
  * @param output_buffer buffer with the result encode data
  */
-void gst_ce_base_encoder_encode (GstCEBaseEncoder * base_encoder,
-    GstBuffer * input_buffer, GstBuffer * output_buffer, gconstpointer raw_data, 
-    gint new_buf_size, gint buffer_duration);
+GstFlowReturn gst_ce_base_encoder_encode (GstCEBaseEncoder * base_encoder,
+    GstBuffer * input_buffer, GstBuffer * output_buffer, GstBuffer * raw_data);
 
 
 /*--------------------*/
@@ -233,6 +236,17 @@ void gst_ce_base_encoder_encode (GstCEBaseEncoder * base_encoder,
  */
 #define gst_ce_base_encoder_process_wait(obj, in_buf, out_buf, time_out) \
   CE_BASE_ENCODER_GET_CLASS(obj)->encoder_process_wait(GST_CE_BASE_ENCODER(obj), in_buf, out_buf, time_out)
+
+/** 
+ * @memberof _GstCEBaseEncoder
+ * @fn GstBuffer* gst_ce_h264_encoder_generate_codec_data (GstBuffer *buffer)
+ * @brief Abstract function that implements generate the codec data for the encoder 
+ * @details This function is implemented by a sub-class that handles the right CodecEngine API (live VIDENC1, or IMGENC)
+ * @param buffer a pointer to a _GstBuffer object
+ * @protected
+ */
+#define gst_ce_base_encoder_generate_codec_data(obj, in_buf, out_buf) \
+  CE_BASE_ENCODER_GET_CLASS(obj)->encoder_generate_codec_data(GST_CE_BASE_ENCODER(obj), in_buf, out_buf)
 
 G_END_DECLS
 #endif

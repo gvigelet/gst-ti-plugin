@@ -36,7 +36,6 @@ G_BEGIN_DECLS
   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_CE_H264_ENCODER))
 #define CE_H264_ENCODER_GET_CLASS(obj) \
   (G_TYPE_INSTANCE_GET_CLASS ((obj), GST_TYPE_CE_H264_ENCODER, GstCEH264EncoderClass))
-
 typedef struct _GstCEH264Encoder GstCEH264Encoder;
 typedef struct _GstCEH264EncoderClass GstCEH264EncoderClass;
 
@@ -59,6 +58,7 @@ struct _GstCEH264EncoderClass
 };
 
 GType gst_ce_h264_encoder_get_type (void);
+
 
 G_END_DECLS
 #endif /* __GST_CEH264_H__ */

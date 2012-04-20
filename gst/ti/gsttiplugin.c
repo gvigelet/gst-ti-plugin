@@ -35,15 +35,15 @@ void gst_cmem_allocator_initialize (void);
 static gboolean
 TIPlugin_init (GstPlugin * plugin)
 {
-  
+
   gboolean ret;
   GST_DEBUG_CATEGORY_INIT (tiplugin, "ti", 0,
       "TI plugin for CodecEngine debugging");
   gst_cmem_allocator_initialize ();
-  
+
   /* Initialize the codec engine run time */
-  CERuntime_init();
-  
+  CERuntime_init ();
+
   ret =
       gst_element_register (plugin, "ceenc_h264", GST_RANK_PRIMARY,
       GST_TYPE_CE_H264_ENCODER);

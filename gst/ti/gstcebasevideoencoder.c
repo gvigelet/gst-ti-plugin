@@ -69,11 +69,12 @@ gst_ce_base_video_encoder_get_property (GObject * object, guint prop_id,
 
 /* Free the codec instance in case of no null */
 gboolean
-gst_ce_base_encoder_finalize_codec(GstCEBaseVideoEncoder * video_encoder){
-  GstCEBaseEncoder *base_encoder = GST_CE_BASE_ENCODER(video_encoder);  
+gst_ce_base_encoder_finalize_codec (GstCEBaseVideoEncoder * video_encoder)
+{
+  GstCEBaseEncoder *base_encoder = GST_CE_BASE_ENCODER (video_encoder);
 
   if (base_encoder->codec_handle != NULL) {
-    if (!gst_ce_base_encoder_delete(base_encoder))
+    if (!gst_ce_base_encoder_delete (base_encoder))
       return FALSE;
   }
 
@@ -82,45 +83,44 @@ gst_ce_base_encoder_finalize_codec(GstCEBaseVideoEncoder * video_encoder){
 
 /* Check for a previews instance of the codec, init the params and create the codec instance */
 gboolean
-gst_ce_base_encoder_init_codec(GstCEBaseVideoEncoder * video_encoder){
-  
+gst_ce_base_encoder_init_codec (GstCEBaseVideoEncoder * video_encoder)
+{
+
   /* Finalize any previous configuration  */
-  if (!gst_ce_base_encoder_finalize_codec(video_encoder))
+  if (!gst_ce_base_encoder_finalize_codec (video_encoder))
     return FALSE;
-  
+
   /* Set the value of the params */
-  if (!gst_ce_base_encoder_initialize_params(video_encoder))
+  if (!gst_ce_base_encoder_initialize_params (video_encoder))
     return FALSE;
 
   /* Give a chance to downstream caps to modify the params or dynamic
    * params before we use them
    */
   //if (! CE_BASE_VIDEO_ENCODER_GET_CLASS(video_encoder)->(
-    //  video_encoder))
-    //return FALSE;
+  //  video_encoder))
+  //return FALSE;
 
   /* Create the codec instance */
-  if (!gst_ce_base_encoder_create(video_encoder))
+  if (!gst_ce_base_encoder_create (video_encoder))
     return FALSE;
 
-  
-  /* TODO: create buffers, and initialize dynamic params*/
+
+  /* TODO: create buffers, and initialize dynamic params */
 
   return TRUE;
 }
 
 static gboolean
-gst_ce_base_video_encoder_default_sink_set_caps (
-  GstCEBaseVideoEncoder * video_encoder, GstCaps * caps)
+gst_ce_base_video_encoder_default_sink_set_caps (GstCEBaseVideoEncoder *
+    video_encoder, GstCaps * caps)
 {
-  
-  GST_DEBUG_OBJECT(video_encoder,"Entry default_sink_set_caps base video encoder");
+
+  GST_DEBUG_OBJECT (video_encoder,
+      "Entry default_sink_set_caps base video encoder");
   gboolean ret;
   GstVideoInfo info;
-  
-  /* Fixate and set caps */
-  gst_ce_base_video_encoder_src_fixate_caps(video_encoder);
-   
+
   /* get info from caps */
   if (!gst_video_info_from_caps (&info, caps))
     goto refuse_caps;
@@ -128,11 +128,15 @@ gst_ce_base_video_encoder_default_sink_set_caps (
   video_encoder->video_info = info;
 
   /* We are ready to init the codec */
-  ret = gst_ce_base_encoder_init_codec(video_encoder);
-  
-  GST_DEBUG_OBJECT(video_encoder,"Leave default_sink_set_caps base video encoder");
+  ret = gst_ce_base_encoder_init_codec (video_encoder);
+
+  /* Fixate and set caps */
+  gst_ce_base_video_encoder_src_fixate_caps (video_encoder, caps);
+
+  GST_DEBUG_OBJECT (video_encoder,
+      "Leave default_sink_set_caps base video encoder");
   return ret;
-  
+
   /* ERRORS */
 refuse_caps:
   {
@@ -147,8 +151,8 @@ static GstCaps *
 gst_ce_base_video_encoder_default_sink_get_caps (GstPad * pad, GstCaps * filter)
 {
   GstCEBaseVideoEncoder *video_encoder =
-    GST_CE_BASE_VIDEO_ENCODER(gst_pad_get_parent(pad));
-  GstCEBaseEncoder *base_encoder = GST_CE_BASE_ENCODER(video_encoder);  
+      GST_CE_BASE_VIDEO_ENCODER (gst_pad_get_parent (pad));
+  GstCEBaseEncoder *base_encoder = GST_CE_BASE_ENCODER (video_encoder);
   GstCaps *caps, *othercaps;
   const GstCaps *templ;
 
@@ -157,7 +161,7 @@ gst_ce_base_video_encoder_default_sink_get_caps (GstPad * pad, GstCaps * filter)
 
   /* If we already have caps return them */
   if ((caps = gst_pad_get_current_caps (pad)) != NULL) {
-	  goto done;
+    goto done;
   }
 
   /* we want to proxy properties like width, height and framerate from the 
@@ -168,10 +172,10 @@ gst_ce_base_video_encoder_default_sink_get_caps (GstPad * pad, GstCaps * filter)
     caps = gst_caps_copy (gst_pad_get_pad_template_caps (pad));
     goto done;
   }
-  
+
   caps = gst_caps_new_empty ();
   templ = gst_pad_get_pad_template_caps (pad);
-  
+
   /* Set caps with peer caps values */
   for (i = 0; i < gst_caps_get_size (templ); i++) {
     /* pick fields from peer caps */
@@ -190,7 +194,7 @@ gst_ce_base_video_encoder_default_sink_get_caps (GstPad * pad, GstCaps * filter)
       gst_caps_merge_structure (caps, structure);
     }
   }
-  
+
 done:
   gst_caps_replace (&othercaps, NULL);
   gst_object_unref (video_encoder);
@@ -200,22 +204,22 @@ done:
 
 /* Default implementation for sink_event */
 static gboolean
-gst_ce_base_video_encoder_default_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
+gst_ce_base_video_encoder_default_sink_event (GstPad * pad, GstObject * parent,
+    GstEvent * event)
 {
-  GST_DEBUG_OBJECT(parent,"Entry default_sink_event base video encoder");
+  GST_DEBUG_OBJECT (parent, "Entry default_sink_event base video encoder");
   GstCEBaseVideoEncoder *video_encoder = GST_CE_BASE_VIDEO_ENCODER (parent);
   gboolean res = FALSE;
-  
+
   switch (GST_EVENT_TYPE (event)) {
     case GST_EVENT_CAPS:
     {
       GstCaps *caps;
-      
+
       gst_event_parse_caps (event, &caps);
-      
+
       /* Set src caps */
-      res = gst_ce_base_video_encoder_sink_set_caps (video_encoder,
-        caps);
+      res = gst_ce_base_video_encoder_sink_set_caps (video_encoder, caps);
       gst_event_unref (event);
       break;
     }
@@ -223,124 +227,141 @@ gst_ce_base_video_encoder_default_sink_event (GstPad * pad, GstObject * parent, 
       res = gst_pad_event_default (pad, parent, event);
       break;
   }
- 
-  GST_DEBUG_OBJECT(video_encoder,"Leave default_sink_event base video encoder");
+
+  GST_DEBUG_OBJECT (video_encoder,
+      "Leave default_sink_event base video encoder");
   return res;
 }
 
 /* Default implementation for sink_query */
 static gboolean
-gst_ce_base_video_encoder_default_sink_query (GstPad * pad, GstObject * parent, GstQuery * query)
-{	
+gst_ce_base_video_encoder_default_sink_query (GstPad * pad, GstObject * parent,
+    GstQuery * query)
+{
   GstCEBaseVideoEncoder *video_encoder = GST_CE_BASE_VIDEO_ENCODER (parent);
   gboolean res = FALSE;
-  
-  GST_DEBUG_OBJECT(video_encoder,"Entry default_sink_query base video encoder");
-  
+
+  GST_DEBUG_OBJECT (video_encoder,
+      "Entry default_sink_query base video encoder");
+
   switch (GST_QUERY_TYPE (query)) {
     case GST_QUERY_CAPS:
     {
       GstCaps *filter, *caps;
-      
+
       gst_query_parse_caps (query, &filter);
-      
+
       /* Get the caps using the filter */
       caps = gst_ce_base_video_encoder_sink_get_caps (video_encoder,
-        pad, filter);
+          pad, filter);
       gst_query_set_caps_result (query, caps);
       gst_caps_unref (caps);
       res = TRUE;
-      
+
       break;
     }
     default:
-	    /* Sent the query to all pads internally linked to "pad". */	
+      /* Sent the query to all pads internally linked to "pad". */
       res = gst_pad_query_default (pad, parent, query);
       break;
   }
- 
-  GST_DEBUG_OBJECT(video_encoder,"Leave default_sink_query base video encoder");
+
+  GST_DEBUG_OBJECT (video_encoder,
+      "Leave default_sink_query base video encoder");
   return res;
 }
 
 /* Default implementation for _chain */
 static GstFlowReturn
-  gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
+gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
     GstBuffer * buffer)
 {
-  
-  GstCEBaseVideoEncoder *video_encoder = 
-    GST_CE_BASE_VIDEO_ENCODER (parent);
-  GST_DEBUG_OBJECT(video_encoder,"Enter default_chain base video encoder");
-  
+
+  GstCEBaseVideoEncoder *video_encoder = GST_CE_BASE_VIDEO_ENCODER (parent);
+  GST_DEBUG_OBJECT (video_encoder, "Enter default_chain base video encoder");
+
   int ret;
-  
+  GstClockTime start, end;
+
   GstMapInfo info_buffer;
   GstBuffer *buffer_in;
   GstBuffer *buffer_out;
   GstBuffer *buffer_push_out;
   GstBuffer *buffer_push_out2;
-  
-  /* Obtain and resize the input and output buffer */
-  buffer_in = (GstBuffer *)GST_CE_BASE_ENCODER(video_encoder)->submitted_input_buffers;
-  buffer_out = (GstBuffer *)GST_CE_BASE_ENCODER(video_encoder)->submitted_output_buffers;
-  
-  /* Access the data of the entry buffer and past it to a contiguos memory buffer */
-  if(!gst_buffer_map (buffer, &info_buffer, GST_MAP_WRITE)) {
-    GST_DEBUG_OBJECT(video_encoder,"Can't access data from buffer");
-  }
-  
-  gst_ce_base_encoder_encode (GST_CE_BASE_ENCODER(video_encoder), buffer_in, buffer_out, 
-    info_buffer.data, gst_buffer_get_size(buffer), GST_BUFFER_DURATION(buffer));
-  
-  buffer_push_out = GST_CE_BASE_ENCODER(video_encoder)->submitted_push_output_buffers;
-  if(buffer_push_out == NULL) {
-    /* Only obtain the next buffer */
-    ret = GST_FLOW_OK;
-  }
-  else {
-    gst_buffer_copy_into (buffer_push_out, buffer, GST_BUFFER_COPY_META, 0, gst_buffer_get_size(buffer));
-    gst_buffer_copy_into (buffer_push_out, buffer, GST_BUFFER_COPY_TIMESTAMPS, 0, 
-                          gst_buffer_get_size(buffer));
-    gst_buffer_copy_into (buffer_push_out, buffer, GST_BUFFER_COPY_FLAGS, 0, -1);
-  
 
-    
-    /*push the buffer and check for any error*/
-    ret = gst_pad_push (GST_CE_BASE_ENCODER(video_encoder)->src_pad, 
-      buffer_push_out);
-    
-    if(GST_FLOW_OK != ret) {
-      GST_ERROR_OBJECT (video_encoder, "Push buffer return with error: %d", ret);
-    } 
+  start = gst_util_get_timestamp ();
+
+  if (GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers == NULL) {
+
+    /* Config the input and output buffer */
+    GstAllocator *buffer_allocator = gst_allocator_find ("ContiguosMemory");
+    if (buffer_allocator == NULL) {
+      GST_DEBUG_OBJECT (video_encoder, "Can't find the buffer allocator");
+    }
+
+    /* Allocate the input buffer with alignment of 4 bytes and with default buffer size */
+    GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers =
+        gst_buffer_new_allocate (buffer_allocator, gst_buffer_get_size (buffer),
+        3);
+
+    if (GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers == NULL) {
+      GST_DEBUG_OBJECT (video_encoder,
+          "Memory couldn't be allocated for input buffer");
+    }
+
+    /* Allocate the output buffer with alignment of 4 bytes */
+    GST_CE_BASE_ENCODER (video_encoder)->submitted_output_buffers =
+        gst_buffer_new_allocate (buffer_allocator, gst_buffer_get_size (buffer),
+        3);
+    if (GST_CE_BASE_ENCODER (video_encoder)->submitted_output_buffers == NULL) {
+      GST_DEBUG_OBJECT (video_encoder,
+          "Memory couldn't be allocated for output buffer");
+    }
   }
-  
-  GST_DEBUG_OBJECT(video_encoder,"LEAVE");
+
+  /* reused the buffers */
+  buffer_in =
+      (GstBuffer *)
+      GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers;
+  buffer_out =
+      (GstBuffer *)
+      GST_CE_BASE_ENCODER (video_encoder)->submitted_output_buffers;
+
+  /* Encode the actual buffer and push the previously buffer */
+  ret =
+      gst_ce_base_encoder_encode (GST_CE_BASE_ENCODER (video_encoder),
+      buffer_in, buffer_out, buffer);
+
+  /* unref the original buffer */
+  gst_buffer_unref (buffer);
+
+  GST_DEBUG_OBJECT (video_encoder, "LEAVE");
   return ret;
 }
 
 static void
-gst_ce_base_video_encoder_class_init (GstCEBaseVideoEncoderClass * video_encoder_class)
+gst_ce_base_video_encoder_class_init (GstCEBaseVideoEncoderClass *
+    video_encoder_class)
 {
   GObjectClass *gobject_class = (GObjectClass *) video_encoder_class;
-  
+
   /* Init debug instance */
   GST_DEBUG_CATEGORY_INIT (gst_ce_base_video_encoder_debug,
       "cebasevideoencoder", 0, "CodecEngine base video encoder Class");
-  
+
   /* Override inheritance methods */
   gobject_class->set_property = gst_ce_base_video_encoder_set_property;
   gobject_class->get_property = gst_ce_base_video_encoder_get_property;
-  video_encoder_class->chain = 
-    GST_DEBUG_FUNCPTR(gst_ce_base_video_encoder_default_chain);
-  video_encoder_class->sink_event = 
-    GST_DEBUG_FUNCPTR(gst_ce_base_video_encoder_default_sink_event);
-  video_encoder_class->sink_query = 
-    GST_DEBUG_FUNCPTR(gst_ce_base_video_encoder_default_sink_query);
-  video_encoder_class->sink_get_caps = 
-    GST_DEBUG_FUNCPTR(gst_ce_base_video_encoder_default_sink_get_caps);
-  video_encoder_class->sink_set_caps = 
-    GST_DEBUG_FUNCPTR(gst_ce_base_video_encoder_default_sink_set_caps);
+  video_encoder_class->chain =
+      GST_DEBUG_FUNCPTR (gst_ce_base_video_encoder_default_chain);
+  video_encoder_class->sink_event =
+      GST_DEBUG_FUNCPTR (gst_ce_base_video_encoder_default_sink_event);
+  video_encoder_class->sink_query =
+      GST_DEBUG_FUNCPTR (gst_ce_base_video_encoder_default_sink_query);
+  video_encoder_class->sink_get_caps =
+      GST_DEBUG_FUNCPTR (gst_ce_base_video_encoder_default_sink_get_caps);
+  video_encoder_class->sink_set_caps =
+      GST_DEBUG_FUNCPTR (gst_ce_base_video_encoder_default_sink_set_caps);
 }
 
 static void
@@ -354,7 +375,7 @@ GType
 gst_ce_base_video_encoder_get_type (void)
 {
   static GType object_type = 0;
- 
+
   if (object_type == 0) {
     static const GTypeInfo object_info = {
       sizeof (GstCEBaseVideoEncoderClass),
@@ -368,11 +389,9 @@ gst_ce_base_video_encoder_get_type (void)
       NULL,
       NULL
     };
-    
+
     object_type = g_type_register_static (GST_TYPE_CE_BASE_ENCODER,
         "GstCEBaseVideoEncoder", &object_info, (GTypeFlags) 0);
   }
   return object_type;
 };
-
-

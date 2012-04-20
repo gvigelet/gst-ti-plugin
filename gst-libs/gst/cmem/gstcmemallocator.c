@@ -27,6 +27,7 @@
 
 GST_DEBUG_CATEGORY_STATIC (cmem);
 #define GST_CAT_DEFAULT cmem
+//#define MAX_BUF_SIZE 9999999
 
 static GstAllocator *_cmem_allocator;
 
@@ -69,15 +70,8 @@ _cmem_new_mem_block (gsize maxsize, gsize align, gsize offset, gsize size)
   mem->alloc_params.type = Memory_CONTIGPOOL;
   mem->alloc_params.flags = Memory_CACHED;
   mem->alloc_params.align = ((UInt) (align - 1));
-  g_print("\n\n\n\n\n\nAntes Memory_alloc: %d\n", maxsize);
-  if((&(mem->alloc_params))->type == NULL) {
-    g_print("type params is bad\n");
-  }
-  else {
-    g_print("type params is good\n");
-  }
+
   mem->data = (guint8 *) Memory_alloc (maxsize, &mem->alloc_params);
-  g_print("Despues Memory_alloc\n\n\n\n\n\n");
   if (mem->data == NULL) {
     g_slice_free1 (sizeof (GstMemoryCMEM), mem);
     GST_DEBUG ("Error in allocated");

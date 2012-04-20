@@ -36,7 +36,6 @@ G_BEGIN_DECLS
   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_CE_BASE_VIDEO_ENCODER))
 #define CE_BASE_VIDEO_ENCODER_GET_CLASS(obj) \
   (G_TYPE_INSTANCE_GET_CLASS ((obj), GST_TYPE_CE_BASE_VIDEO_ENCODER, GstCEBaseVideoEncoderClass))
-
 typedef struct _GstCEBaseVideoEncoder GstCEBaseVideoEncoder;
 typedef struct _GstCEBaseVideoEncoderClass GstCEBaseVideoEncoderClass;
 
@@ -53,14 +52,16 @@ struct _GstCEBaseVideoEncoder
 struct _GstCEBaseVideoEncoderClass
 {
   GstCEBaseEncoderClass parent_class;
-  
-  GstFlowReturn (*chain) (GstPad * pad, GstObject * parent,
-    GstBuffer * buffer);
-  gboolean (*sink_event) (GstPad * pad, GstObject * parent, GstEvent * query);
-  gboolean (*sink_query) (GstPad * pad, GstObject * parent, GstQuery * query);
-  gboolean (*sink_set_caps) (GstCEBaseVideoEncoder * video_encoder, GstCaps * caps);
-  GstCaps* (*sink_get_caps) (GstPad * pad, GstCaps * filter);
-  gboolean (*fixate_src_caps) (GstCEBaseVideoEncoder * video_encoder);
+
+    GstFlowReturn (*chain) (GstPad * pad, GstObject * parent,
+      GstBuffer * buffer);
+    gboolean (*sink_event) (GstPad * pad, GstObject * parent, GstEvent * query);
+    gboolean (*sink_query) (GstPad * pad, GstObject * parent, GstQuery * query);
+    gboolean (*sink_set_caps) (GstCEBaseVideoEncoder * video_encoder,
+      GstCaps * caps);
+  GstCaps *(*sink_get_caps) (GstPad * pad, GstCaps * filter);
+    gboolean (*fixate_src_caps) (GstCEBaseVideoEncoder * video_encoder,
+      GstCaps * filter);
 };
 
 GType gst_ce_base_video_encoder_get_type (void);
@@ -68,8 +69,7 @@ GType gst_ce_base_video_encoder_get_type (void);
 /*---------------------*/
 /* Protected Functions */
 /*---------------------*/
-gboolean
-gst_ce_base_encoder_init_codec(GstCEBaseVideoEncoder * video_encoder);
+gboolean gst_ce_base_encoder_init_codec (GstCEBaseVideoEncoder * video_encoder);
 
 #define gst_ce_base_video_encoder_chain(obj,pad, parent, buffer) \
   CE_BASE_VIDEO_ENCODER_GET_CLASS(obj)->chain(pad, parent, query)
@@ -86,8 +86,8 @@ gst_ce_base_encoder_init_codec(GstCEBaseVideoEncoder * video_encoder);
 #define gst_ce_base_video_encoder_sink_get_caps(obj, pad, filter) \
   CE_BASE_VIDEO_ENCODER_GET_CLASS(obj)->sink_get_caps(pad, filter)
 
-#define gst_ce_base_video_encoder_src_fixate_caps(obj) \
-  CE_BASE_VIDEO_ENCODER_GET_CLASS(obj)->fixate_src_caps(obj)
+#define gst_ce_base_video_encoder_src_fixate_caps(obj, filter) \
+  CE_BASE_VIDEO_ENCODER_GET_CLASS(obj)->fixate_src_caps(obj, filter)
 
 /* Abstract Functions */
 

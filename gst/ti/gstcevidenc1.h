@@ -39,7 +39,6 @@ G_BEGIN_DECLS
   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_CE_VIDENC1))
 #define CE_VIDENC1_GET_CLASS(obj) \
 (G_TYPE_INSTANCE_GET_CLASS ((obj), GST_TYPE_CE_VIDENC1, GstCEVIDENC1Class))
-
 typedef struct _GstCEVIDENC1 GstCEVIDENC1;
 typedef struct _GstCEVIDENC1Class GstCEVIDENC1Class;
 
@@ -55,6 +54,8 @@ struct _GstCEVIDENC1
 struct _GstCEVIDENC1Class
 {
   GstCEBaseVideoEncoderClass parent_class;
+
+
 };
 
 /* Class functionality */

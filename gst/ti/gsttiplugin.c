@@ -20,14 +20,13 @@
 
 #include "gsttiplugin.h"
 #include <gstceh264encoder.h>
+#include <gstcempeg4encoder.h>
 #include <xdc/std.h>
 #include <ti/sdo/ce/Engine.h>
 #include <ti/sdo/ce/video1/videnc1.h>
 
 GST_DEBUG_CATEGORY_STATIC (tiplugin);
 #define GST_CAT_DEFAULT tiplugin
-
-Engine_Handle engine_handle = NULL;
 
 void gst_cmem_allocator_initialize (void);
 
@@ -43,12 +42,20 @@ TIPlugin_init (GstPlugin * plugin)
 
   /* Initialize the codec engine run time */
   CERuntime_init ();
-
+  
+  /* Register the encoders */
   ret =
       gst_element_register (plugin, "ceenc_h264", GST_RANK_PRIMARY,
       GST_TYPE_CE_H264_ENCODER);
   if (!ret) {
     g_warning ("Failed to register h264 encoder element");
+  }
+  
+  ret =
+      gst_element_register (plugin, "ceenc_mpeg4", GST_RANK_PRIMARY,
+      GST_TYPE_CE_MPEG4_ENCODER);
+  if (!ret) {
+    g_warning ("Failed to register mpeg4 encoder element");
   }
 
   return ret;

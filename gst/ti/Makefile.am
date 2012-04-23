@@ -2,11 +2,11 @@ plugin_LTLIBRARIES = libgstti_plugin.la
 
 libgstti_plugin_la_SOURCES = gsttiplugin.c \
  gstcebaseencoder.c gstcebasevideoencoder.c gstcevidenc1.c\
- gstcevideoutils.c gstceh264encoder.c
+ gstcevideoutils.c gstceh264encoder.c gstcempeg4encoder.c
 
 libgstti_plugin_la_HEADER = gsttiplugin.h \
  gstcebaseencoder.h gstcebasevideoencoder.h gstcevidenc1.h\
- gstcevideoutils.h gstceh264encoder.h 
+ gstcevideoutils.h gstceh264encoder.h gstcempeg4encoder.h 
 
 libgstti_plugin_la_CFLAGS = -I@top_srcdir@/gst-libs/gst/cmem/ $(GST_CFLAGS) $(GST_BASE_CFLAGS) $(GST_BASEVIDEO_CFLAGS)\
 	$(GST_GOOD_CFLAGS) $(CODECS_CFLAGS) 

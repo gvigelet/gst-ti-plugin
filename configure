@@ -679,9 +679,6 @@ LDFLAGS
 CFLAGS
 CC
 ACLOCAL_AMFLAGS
-PACKAGE_VERSION_MICRO
-PACKAGE_VERSION_MINOR
-PACKAGE_VERSION_MAJOR
 am__untar
 am__tar
 AMTAR
@@ -2139,9 +2136,7 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
 
-
-
-
+AG_GST_INIT
 
 GST_MAJORMINOR=0.11
 GST_REQUIRED=0.11.0
@@ -2655,15 +2650,7 @@ am__tar='${AMTAR} chof - "$$tardir"'; am__untar='${AMTAR} xf -'
 
 
 
-
-  PACKAGE_VERSION_MAJOR=$(echo 1.0 | cut -d'.' -f1)
-  PACKAGE_VERSION_MINOR=$(echo 1.0 | cut -d'.' -f2)
-  PACKAGE_VERSION_MICRO=$(echo 1.0 | cut -d'.' -f3)
-
-
-
-
-
+AS_VERSION
 
 ACLOCAL_AMFLAGS="-I m4"
 
@@ -11186,6 +11173,9 @@ fi
 
 
 $as_echo "#define H264_ENCODER_ACCEPTS_NV12 1" >>confdefs.h
+
+
+$as_echo "#define MPEG4_ENCODER_ACCEPTS_NV12 1" >>confdefs.h
 
 fi
 

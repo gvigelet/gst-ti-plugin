@@ -129,6 +129,7 @@ gst_ce_base_encoder_init (GstCEBaseEncoder * base_encoder,
   base_encoder->codec_data = NULL;
   base_encoder->submitted_input_buffers = NULL;
   base_encoder->submitted_output_buffers = NULL;
+  base_encoder->codec_data = NULL;
 
   /* Allocate the push out put buffer */
   //base_encoder->submitted_push_output_buffers = gst_buffer_new_and_alloc(DEFAULT_BUF_SIZE);
@@ -199,12 +200,13 @@ GstFlowReturn
 gst_ce_base_encoder_encode (GstCEBaseEncoder * base_encoder,
     GstBuffer * input_buffer, GstBuffer * output_buffer, GstBuffer * raw_data)
 {
-
+  
   int ret;
   GstBuffer *buffer_push_out = NULL;
   pthread_t processAsyncthread;
   gboolean processAsyncReturn;
   GstMapInfo info_raw_data;
+  GstMapInfo info_output_buffer;
 
   static gboolean first_buffer = TRUE;
 
@@ -214,26 +216,73 @@ gst_ce_base_encoder_encode (GstCEBaseEncoder * base_encoder,
 
   /* Entry only once */
   if (first_buffer == TRUE) {
-
-    /* Prepare output and input buffers */
-    gsize bytes_copied = gst_buffer_fill (input_buffer, 0, info_raw_data.data,
-        gst_buffer_get_size (raw_data));
-    if (bytes_copied == 0) {
-      GST_DEBUG_OBJECT (base_encoder,
-          "Can't obtain data from buffer to input buffer");
+    
+    if(base_encoder->codec_data == NULL) {
+      /* Set the codec data and update the caps */
+      /* Prepare the arguments for the asynchronous process */
+      base_encoder->arguments->base_encoder = base_encoder;
+      base_encoder->arguments->input_buffer = input_buffer;
+      base_encoder->arguments->output_buffer = output_buffer;
+      
+      CE_BASE_ENCODER_GET_CLASS (base_encoder)->encoder_process_sync(base_encoder, input_buffer, output_buffer);
+      
+      /* Prepare the push output buffer */
+      VIDENC1_OutArgs outArgs =
+          *((VIDENC1_OutArgs *) base_encoder->submitted_output_arguments);
+      
+      buffer_push_out = gst_buffer_new_and_alloc (outArgs.bytesGenerated);
+      
+      if (!gst_buffer_map (output_buffer, &info_output_buffer, GST_MAP_WRITE)) {
+       GST_DEBUG_OBJECT (base_encoder, "Can't access data from output buffer");
+      }
+      
+      gst_buffer_fill (buffer_push_out, 0, info_output_buffer.data,
+          outArgs.bytesGenerated);
+      
+      base_encoder->codec_data = CE_BASE_ENCODER_GET_CLASS (base_encoder)->encoder_generate_codec_data(buffer_push_out);
+      
+      if(base_encoder->codec_data == NULL){
+        GST_WARNING_OBJECT (base_encoder,
+            "Can't obtain codec data");
+        first_buffer = FALSE;
+      }
+      else {
+        
+        GstCaps* caps = gst_caps_make_writable(gst_pad_get_current_caps (base_encoder->src_pad));
+        gst_caps_set_simple (caps, "codec_data", GST_TYPE_BUFFER, base_encoder->codec_data, NULL);
+        gboolean ret = gst_pad_set_caps (base_encoder->src_pad, caps);
+        if (ret == FALSE) {
+          GST_WARNING_OBJECT (base_encoder, "Caps can't be set", ret);
+        } else {
+          GST_DEBUG_OBJECT (base_encoder, "Caps set succesfull");
+        }
+        
+      }
+      
     }
+    else {
+      /* Prepare output and input buffers */
+      gsize bytes_copied = gst_buffer_fill (input_buffer, 0, info_raw_data.data,
+          gst_buffer_get_size (raw_data));
+      if (bytes_copied == 0) {
+        GST_DEBUG_OBJECT (base_encoder,
+            "Can't obtain data from buffer to input buffer");
+      }
 
-    /* Prepare the arguments for the asynchronous process */
-    base_encoder->arguments->base_encoder = base_encoder;
-    base_encoder->arguments->input_buffer = input_buffer;
-    base_encoder->arguments->output_buffer = output_buffer;
+      /* Prepare the arguments for the asynchronous process */
+      base_encoder->arguments->base_encoder = base_encoder;
+      base_encoder->arguments->input_buffer = input_buffer;
+      base_encoder->arguments->output_buffer = output_buffer;
 
-    /* Prepare the thread for encode and init the process */
-    int ret = pthread_create (base_encoder->processAsyncthread, NULL,
-        CE_BASE_ENCODER_GET_CLASS (base_encoder)->encoder_process_async,
-        base_encoder->arguments);
+      /* Prepare the thread for encode and init the process */
+      int ret = pthread_create (base_encoder->processAsyncthread, NULL,
+          CE_BASE_ENCODER_GET_CLASS (base_encoder)->encoder_process_async,
+          base_encoder->arguments);
 
-    first_buffer = FALSE;
+      first_buffer = FALSE;
+    }
+    
+    
   } else {
     /* wait for previus call of processAsync */
     pthread_join (*(base_encoder->processAsyncthread), NULL);
@@ -241,11 +290,16 @@ gst_ce_base_encoder_encode (GstCEBaseEncoder * base_encoder,
     /* Prepare the push output buffer */
     VIDENC1_OutArgs outArgs =
         *((VIDENC1_OutArgs *) base_encoder->submitted_output_arguments);
-
-    buffer_push_out = gst_buffer_new_and_alloc (outArgs.encodedBuf.bufSize);
-    gst_buffer_fill (buffer_push_out, 0, outArgs.encodedBuf.buf,
-        outArgs.encodedBuf.bufSize);
-
+      
+    buffer_push_out = gst_buffer_new_and_alloc (outArgs.bytesGenerated);
+    
+    if (!gst_buffer_map (output_buffer, &info_output_buffer, GST_MAP_WRITE)) {
+       GST_DEBUG_OBJECT (base_encoder, "Can't access data from output buffer");
+    }
+    
+    gst_buffer_fill (buffer_push_out, 0, info_output_buffer.data,
+        outArgs.bytesGenerated);
+    
     /* Prepare output and input buffers */
     gsize bytes_copied = gst_buffer_fill (input_buffer, 0, info_raw_data.data,
         gst_buffer_get_size (raw_data));

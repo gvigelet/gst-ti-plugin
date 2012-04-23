@@ -47,6 +47,7 @@ struct _GstCEBaseVideoEncoder
 {
   GstCEBaseEncoder base_encoder;
   GstVideoInfo video_info;
+  
 };
 
 struct _GstCEBaseVideoEncoderClass

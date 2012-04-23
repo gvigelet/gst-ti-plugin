@@ -18,22 +18,18 @@
 
 #include <string.h>
 #include <gst/gst.h>
-#include <gstceh264encoder.h>
+#include <gstcempeg4encoder.h>
 
-GST_DEBUG_CATEGORY_STATIC (ceenc_h264);
-#define GST_CAT_DEFAULT ceenc_h264
-#define NO_PPS -1
-#define NO_SPS -2
-#define NO_PPS_SPS -3
-#define NAL_TAG_LENGTH 4
+GST_DEBUG_CATEGORY_STATIC (ceenc_mpeg4);
+#define GST_CAT_DEFAULT ceenc_mpeg4
 
-/* Especification of the statics caps for h264 encoder */
-static GstStaticPadTemplate gst_ce_h264_encoder_sink_factory =
+/* Especification of the statics caps for mpeg4 encoder */
+static GstStaticPadTemplate gst_ce_mpeg4_encoder_sink_factory =
     GST_STATIC_PAD_TEMPLATE ("sink",
     GST_PAD_SINK,
     GST_PAD_ALWAYS,
     GST_STATIC_CAPS (
-#ifdef H264_ENCODER_ACCEPTS_NV12
+#ifdef MPEG4_ENCODER_ACCEPTS_NV12
         "video/x-raw, "
         "  format = (string) NV12,"
         "  width = (int) [ 1, 2147483647 ],"
@@ -43,13 +39,13 @@ static GstStaticPadTemplate gst_ce_h264_encoder_sink_factory =
     )
     );
 
-static GstStaticPadTemplate gst_ce_h264_encoder_src_factory =
+static GstStaticPadTemplate gst_ce_mpeg4_encoder_src_factory =
     GST_STATIC_PAD_TEMPLATE ("src",
     GST_PAD_SRC,
     GST_PAD_ALWAYS,
-    GST_STATIC_CAPS ("video/x-h264,"
-        "  stream-format = (string) { avc, byte-stream }, "
-        "  alignment = (string) { nal, au },"
+    GST_STATIC_CAPS ("video/mpeg,"
+        "  mpegversion=(int)4, "
+        "  systemstream=(boolean)false,"
         "  width = (int) [ 1, 4096 ],"
         "  height = (int) [ 1, 4096 ],"
         "  framerate = (fraction)[ 0/1, 2147483647/1 ];")
@@ -64,18 +60,18 @@ enum
 
 /* base_init of the class */
 static void
-gst_ce_h264_encoder_base_init (GstCEH264EncoderClass * klass)
+gst_ce_mpeg4_encoder_base_init (GstCEMPEG4EncoderClass * klass)
 {
 }
 
 /* base finalize for the class */
 static void
-gst_ce_h264_encoder_base_finalize (GstCEH264EncoderClass * klass)
+gst_ce_mpeg4_encoder_base_finalize (GstCEMPEG4EncoderClass * klass)
 {
 }
 
 static void
-gst_ce_h264_encoder_set_property (GObject * object, guint prop_id,
+gst_ce_mpeg4_encoder_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
 {
   switch (prop_id) {
@@ -87,7 +83,7 @@ gst_ce_h264_encoder_set_property (GObject * object, guint prop_id,
 }
 
 static void
-gst_ce_h264_encoder_get_property (GObject * object, guint prop_id,
+gst_ce_mpeg4_encoder_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec)
 {
   switch (prop_id) {
@@ -154,7 +150,7 @@ gst_ce_h264_encoder_get_property (GObject * object, guint prop_id,
          }*/
 
 /*static GstBuffer*
-gst_ce_h264_encoder_buffer_header(guchar *buffer_data, int buffer_data_lenght){
+gst_ce_mpeg4_encoder_buffer_header(guchar *buffer_data, int buffer_data_lenght){
     GstBuffer *avcc = NULL;
     guchar *avcc_data = NULL;
                                                                                 gint avcc_len = 7;*/// Default 7 bytes w/o SPS, PPS data
@@ -236,7 +232,7 @@ gst_ce_h264_encoder_buffer_header(guchar *buffer_data, int buffer_data_lenght){
 
        /* Function for calculate the pps index in the header */
 /*void 
-gst_ce_h264_encoder_scan_data(gint8 *data, int data_size, gint ret[]) {
+gst_ce_mpeg4_encoder_scan_data(gint8 *data, int data_size, gint ret[]) {
   
   int index;
   gboolean first_nal = TRUE;
@@ -273,23 +269,65 @@ gst_ce_h264_encoder_scan_data(gint8 *data, int data_size, gint ret[]) {
   return ret;
 }*/
 
+static GstBuffer*
+gst_ce_mpeg4_encoder_generate_codec_data (GstBuffer *buffer){
+    
+    
+    
+    guchar *data;
+    gint i;
+    GstBuffer *codec_data = NULL;
+    
+    GstMapInfo info_buffer;
+    if (!gst_buffer_map (buffer, &info_buffer, GST_MAP_WRITE)) {
+      GST_DEBUG ("Can't access data from buffer");
+    }
+    
+    data = info_buffer.data;
+    
+    /* Search the object layer start code */
+    for (i = 0; i < gst_buffer_get_size(buffer) - 4; ++i) {
+        if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1 && 
+            data[i + 3] == 0x20) {
+                break;
+        }
+    }
+    i++;
+    /* Search next start code */
+    for (; i < gst_buffer_get_size(buffer) - 4; ++i) {
+        if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1) {
+                break;
+        }
+    }
+
+    if ((i != (gst_buffer_get_size(buffer) - 4)) &&
+        (i != 0)) {
+        /* We found a codec data */
+        codec_data = gst_buffer_new_and_alloc(i);
+        gst_buffer_fill (codec_data, 0, data, i);
+    }
+
+    return codec_data;
+}
+
+
 /* Function for generate SPS and PPS, and built the codec data */
-static GstBuffer *
-gst_ce_h264_encoder_generate_codec_data (GstCEBaseEncoder * base_encoder,
+/*static GstBuffer *
+gst_ce_mpeg4_encoder_generate_codec_data (GstCEBaseEncoder * base_encoder,
     GstBuffer * input_buffer, GstBuffer * output_buffer)
 {
-
+*/
   //int buf_exam[2];
 
   /* Set the params */
-  VIDENC1_DynamicParams *dynamic_params = base_encoder->codec_dynamic_params;
+  /*VIDENC1_DynamicParams *dynamic_params = base_encoder->codec_dynamic_params;
   dynamic_params->generateHeader = XDM_GENERATE_HEADER;
   CE_BASE_ENCODER_GET_CLASS (base_encoder)->encoder_control (base_encoder,
       XDM_SETPARAMS);
 
-
+*/
   /* Generate SPS and PPS */
-  GstBuffer *ret;
+  /*GstBuffer *ret;
   IVIDEO1_BufDescIn inBufDesc;
   XDM_BufDesc outBufDesc;
   VIDENC1_InArgs *inArgs;
@@ -302,17 +340,17 @@ gst_ce_h264_encoder_generate_codec_data (GstCEBaseEncoder * base_encoder,
 
   inArgs = (VIDENC1_InArgs *) base_encoder->submitted_input_arguments;
   outArgs = (VIDENC1_OutArgs *) base_encoder->submitted_output_arguments;
-
+*/
   /* Access the data of the input and output buffer */
-  if (!gst_buffer_map (input_buffer, &info_in, GST_MAP_WRITE)) {
+  /*if (!gst_buffer_map (input_buffer, &info_in, GST_MAP_WRITE)) {
     GST_DEBUG_OBJECT (base_encoder, "Can't access data from input buffer");
   }
   if (!gst_buffer_map (output_buffer, &info_out, GST_MAP_WRITE)) {
     GST_DEBUG_OBJECT (base_encoder, "Can't access data from output buffer");
   }
-
+*/
   /* Prepare the input buffer descriptor for the encode process */
-  inBufDesc.frameWidth =
+  /*inBufDesc.frameWidth =
       GST_VIDEO_INFO_WIDTH (&GST_CE_BASE_VIDEO_ENCODER
       (base_encoder)->video_info);
   inBufDesc.frameHeight =
@@ -321,29 +359,29 @@ gst_ce_h264_encoder_generate_codec_data (GstCEBaseEncoder * base_encoder,
   inBufDesc.framePitch =
       GST_VIDEO_INFO_PLANE_STRIDE (&GST_CE_BASE_VIDEO_ENCODER
       (base_encoder)->video_info, 0);
-
+*/
   /* The next piece of code depend of the mime type of the buffer */
-  inBufDesc.bufDesc[0].bufSize = gst_buffer_get_size (input_buffer);    /*NNPodria ser esto */
-  inBufDesc.bufDesc[0].buf = info_in.data;
-  inBufDesc.bufDesc[1].bufSize = gst_buffer_get_size (input_buffer);
-  inBufDesc.bufDesc[1].buf = info_in.data + (inBufDesc.frameWidth * inBufDesc.frameHeight);     //(gst_buffer_get_size(input_buffer) * (2 / 3));
+  //inBufDesc.bufDesc[0].bufSize = gst_buffer_get_size (input_buffer);    /*NNPodria ser esto */
+  //inBufDesc.bufDesc[0].buf = info_in.data;
+  //inBufDesc.bufDesc[1].bufSize = gst_buffer_get_size (input_buffer);
+  //inBufDesc.bufDesc[1].buf = info_in.data + (inBufDesc.frameWidth * inBufDesc.frameHeight);     //(gst_buffer_get_size(input_buffer) * (2 / 3));
   //inBufDesc.numBufs = 2;
 
   /* Prepare the output buffer descriptor for the encode process */
-  outBufSizeArray[0] = gst_buffer_get_size (output_buffer);
+  /*outBufSizeArray[0] = gst_buffer_get_size (output_buffer);
   outBufDesc.numBufs = 1;
   outBufDesc.bufs = &(info_out.data);
   outBufDesc.bufSizes = outBufSizeArray;
-
+*/
   /* Set output and input arguments for the encode process */
-  inArgs->size = sizeof (VIDENC1_InArgs);
+  /*inArgs->size = sizeof (VIDENC1_InArgs);
   inArgs->inputID = 1;
   inArgs->topFieldFirstFlag = 1;
 
   outArgs->size = sizeof (VIDENC1_OutArgs);
-
+*/
   /* Procees la encode and check for errors */
-  status =
+  /*status =
       VIDENC1_process (base_encoder->codec_handle, &inBufDesc, &outBufDesc,
       inArgs, outArgs);
 
@@ -354,36 +392,36 @@ gst_ce_h264_encoder_generate_codec_data (GstCEBaseEncoder * base_encoder,
         (unsigned int) outArgs->extendedError);
     return NULL;
   }
-
+*/
   /**********************/
   /* Prepare the result, experimental can change */
   /**********************/
-  ret = gst_buffer_new_and_alloc (outArgs->encodedBuf.bufSize);
+  /*ret = gst_buffer_new_and_alloc (outArgs->encodedBuf.bufSize);
   gst_buffer_fill (ret, 0, outArgs->encodedBuf.buf,
-      outArgs->encodedBuf.bufSize);
-  //ret = gst_ce_h264_encoder_buffer_header(outArgs->encodedBuf.buf, outArgs->encodedBuf.bufSize);
+      outArgs->encodedBuf.bufSize);*/
+  //ret = gst_ce_mpeg4_encoder_buffer_header(outArgs->encodedBuf.buf, outArgs->encodedBuf.bufSize);
 
   /* Restart the params */
-  dynamic_params->generateHeader = XDM_ENCODE_AU;
+ /* dynamic_params->generateHeader = XDM_ENCODE_AU;
   dynamic_params->forceFrame = XDM_ENCODE_AU;
   CE_BASE_ENCODER_GET_CLASS (base_encoder)->encoder_control (base_encoder,
       XDM_SETPARAMS);
 
   return ret;
 
-}
+}*/
 
 /* Implementation of fix_src_caps depending of template src caps 
  * and src_peer caps */
 static gboolean
-gst_ce_h264_fixate_src_caps (GstCEBaseVideoEncoder * base_video_encoder,
+gst_ce_mpeg4_fixate_src_caps (GstCEBaseVideoEncoder * base_video_encoder,
     GstCaps * filter)
 {
 
   GstCEBaseEncoder *base_encoder = GST_CE_BASE_ENCODER (base_video_encoder);
   GstCEBaseVideoEncoder *video_encoder =
       GST_CE_BASE_VIDEO_ENCODER (base_video_encoder);
-  GstCEH264Encoder *h264_encoder = GST_CE_H264_ENCODER (base_video_encoder);
+  GstCEMPEG4Encoder *mpeg4_encoder = GST_CE_MPEG4_ENCODER (base_video_encoder);
 
   GstBuffer *codec_data;
   GstBuffer *input_buffer;
@@ -397,7 +435,7 @@ gst_ce_h264_fixate_src_caps (GstCEBaseVideoEncoder * base_video_encoder,
   const gchar *alignment;
   gboolean ret;
 
-  GST_DEBUG_OBJECT (h264_encoder, "Enter fixate_src_caps h264 encoder");
+  GST_DEBUG_OBJECT (mpeg4_encoder, "Enter fixate_src_caps mpeg4 encoder");
 
   /* Filter based on our template caps */
   template_caps = gst_pad_get_pad_template_caps (base_encoder->src_pad);
@@ -424,18 +462,7 @@ gst_ce_h264_fixate_src_caps (GstCEBaseVideoEncoder * base_video_encoder,
     GST_ERROR_OBJECT (base_video_encoder, "Failed to get src caps structure");
     return FALSE;
   }
-  /* Force to use avc and nal in case of null */
-  stream_format = gst_structure_get_string (structure, "stream-format");
-  if (stream_format == NULL) {
-    stream_format = "avc";
-    gst_structure_set (structure, "stream-format", G_TYPE_STRING, stream_format,
-        NULL);
-  }
-  alignment = gst_structure_get_string (structure, "alignment");
-  if (alignment == NULL) {
-    alignment = "nal";
-    gst_structure_set (structure, "alignment", G_TYPE_STRING, alignment, NULL);
-  }
+ 
   /* Set the width, height and framerate */
   gst_structure_set (structure, "width", G_TYPE_INT,
       GST_VIDEO_INFO_WIDTH (&video_encoder->video_info), NULL);
@@ -446,53 +473,48 @@ gst_ce_h264_fixate_src_caps (GstCEBaseVideoEncoder * base_video_encoder,
       GST_VIDEO_INFO_FPS_D (&video_encoder->video_info), NULL);
 
   /* Save the specific decision for future use */
-  h264_encoder->generate_bytestream =
-      !strcmp (stream_format, "byte-stream") ? TRUE : FALSE;
-  h264_encoder->generate_aud = !strcmp (alignment, "aud") ? TRUE : FALSE;
+  //mpeg4_encoder->generate_bytestream =
+    //  !strcmp (stream_format, "byte-stream") ? TRUE : FALSE;
+  //mpeg4_encoder->generate_aud = !strcmp (alignment, "aud") ? TRUE : FALSE;
 
   /* Obtain the codec data  */
-  input_buffer = gst_buffer_new_and_alloc (100);
-  output_buffer = gst_buffer_new_and_alloc (100);
-  codec_data =
-      gst_ce_h264_encoder_generate_codec_data (GST_CE_BASE_ENCODER
-      (base_video_encoder), input_buffer, output_buffer);
-  gst_caps_set_simple (caps, "codec_data", GST_TYPE_BUFFER, codec_data, NULL);
-
-  base_encoder->codec_data = codec_data;
+  //codec_data = gst_buffer_new_and_alloc(1);
+  //gst_caps_set_simple (caps, "codec_data", GST_TYPE_BUFFER, codec_data, NULL);
+  
 
   /* Set the src caps and check for errors */
   ret = gst_pad_set_caps (base_encoder->src_pad, caps);
   if (ret == FALSE) {
-    GST_WARNING_OBJECT (h264_encoder, "Caps can't be set", ret);
+    GST_WARNING_OBJECT (mpeg4_encoder, "Caps can't be set", ret);
   } else {
-    GST_DEBUG_OBJECT (h264_encoder, "Caps set succesfull");
+    GST_DEBUG_OBJECT (mpeg4_encoder, "Caps set succesfull");
   }
 
-  GST_DEBUG_OBJECT (h264_encoder, "Leave fixate_src_caps h264 encoder");
+  GST_DEBUG_OBJECT (mpeg4_encoder, "Leave fixate_src_caps mpeg4 encoder");
   return ret;
 
 }
 
 /* Init of the class */
 static void
-gst_ce_h264_encoder_init (GstCEH264Encoder * h264_encoder)
+gst_ce_mpeg4_encoder_init (GstCEMPEG4Encoder * mpeg4_encoder)
 {
 
-  GstCEH264EncoderClass *h264_encoder_class =
-      CE_H264_ENCODER_GET_CLASS (h264_encoder);
+  GstCEMPEG4EncoderClass *mpeg4_encoder_class =
+      CE_MPEG4_ENCODER_GET_CLASS (mpeg4_encoder);
 
   /* Obtain base class and instance */
-  GstCEBaseEncoder *base_encoder = GST_CE_BASE_ENCODER (h264_encoder);
+  GstCEBaseEncoder *base_encoder = GST_CE_BASE_ENCODER (mpeg4_encoder);
 
   /* Obtain base video class */
   GstCEBaseVideoEncoderClass *video_encoder_class =
-      GST_CE_BASE_VIDEO_ENCODER_CLASS (h264_encoder_class);
+      GST_CE_BASE_VIDEO_ENCODER_CLASS (mpeg4_encoder_class);
 
-  GST_DEBUG_OBJECT (h264_encoder, "ENTER");
+  GST_DEBUG_OBJECT (mpeg4_encoder, "ENTER");
 
   /* Process the sinkpad */
   base_encoder->sink_pad =
-      gst_pad_new_from_static_template (&gst_ce_h264_encoder_sink_factory,
+      gst_pad_new_from_static_template (&gst_ce_mpeg4_encoder_sink_factory,
       "sink");
   gst_pad_set_chain_function (base_encoder->sink_pad,
       GST_DEBUG_FUNCPTR (video_encoder_class->chain));
@@ -504,30 +526,30 @@ gst_ce_h264_encoder_init (GstCEH264Encoder * h264_encoder)
 
   /* Process the src pad */
   base_encoder->src_pad =
-      gst_pad_new_from_static_template (&gst_ce_h264_encoder_src_factory,
+      gst_pad_new_from_static_template (&gst_ce_mpeg4_encoder_src_factory,
       "src");
   gst_element_add_pad (GST_ELEMENT (base_encoder), base_encoder->src_pad);
 
   /* Setup codec name */
-  base_encoder->codec_name = "h264enc";
+  base_encoder->codec_name = "mpeg4enc";
 
   /* Init the engine handler */
   Engine_Error *engine_error;
-  GST_CE_BASE_ENCODER (h264_encoder)->engine_handle =
+  GST_CE_BASE_ENCODER (mpeg4_encoder)->engine_handle =
       Engine_open ("codecServer", NULL, engine_error);
 
   if (engine_error != Engine_EOK) {
-    GST_WARNING_OBJECT (h264_encoder, "Problems in Engine_open with code: %d",
+    GST_WARNING_OBJECT (mpeg4_encoder, "Problems in Engine_open with code: %d",
         engine_error);
   }
 
-  GST_DEBUG_OBJECT (h264_encoder, "LEAVE");
+  GST_DEBUG_OBJECT (mpeg4_encoder, "LEAVE");
 
 }
 
 /* class_init of the class */
 static void
-gst_ce_h264_encoder_class_init (GstCEH264EncoderClass * klass)
+gst_ce_mpeg4_encoder_class_init (GstCEMPEG4EncoderClass * klass)
 {
 
   /* Obtain base class */
@@ -538,53 +560,53 @@ gst_ce_h264_encoder_class_init (GstCEH264EncoderClass * klass)
   GstCEBaseVideoEncoderClass *video_encoder_class =
       GST_CE_BASE_VIDEO_ENCODER_CLASS (klass);
 
-  GST_DEBUG_CATEGORY_INIT (ceenc_h264, "ceenc_h264", 0,
-      "CodecEngine h264 encoder");
+  GST_DEBUG_CATEGORY_INIT (ceenc_mpeg4, "ceenc_mpeg4", 0,
+      "CodecEngine mpeg4 encoder");
 
   GST_DEBUG ("ENTER");
-  gobject_class->set_property = gst_ce_h264_encoder_set_property;
-  gobject_class->get_property = gst_ce_h264_encoder_get_property;
-
-  video_encoder_class->fixate_src_caps = gst_ce_h264_fixate_src_caps;
 
   gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_ce_h264_encoder_src_factory));
+      gst_static_pad_template_get (&gst_ce_mpeg4_encoder_src_factory));
   gst_element_class_add_pad_template (gstelement_class,
-      gst_static_pad_template_get (&gst_ce_h264_encoder_sink_factory));
+      gst_static_pad_template_get (&gst_ce_mpeg4_encoder_sink_factory));
 
-  g_object_class_install_property (gobject_class, PROP_SINGLE_NAL,
+  /*g_object_class_install_property (gobject_class, PROP_SINGLE_NAL,
       g_param_spec_boolean ("single-nal", "Single NAL optimization",
           "Assume encoder generates single NAL units per frame encoded to optimize avc stream generation",
-          FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+          FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));*/
 
   /* Implementation of inherenci functions */
-  //base_encoder_class->encoder_generate_codec_data =
-    //  GST_DEBUG_FUNCPTR (gst_ce_h264_encoder_generate_codec_data);
+  base_encoder_class->encoder_generate_codec_data =
+      GST_DEBUG_FUNCPTR (gst_ce_mpeg4_encoder_generate_codec_data);
+  gobject_class->set_property = gst_ce_mpeg4_encoder_set_property;
+  gobject_class->get_property = gst_ce_mpeg4_encoder_get_property;
 
+  video_encoder_class->fixate_src_caps = gst_ce_mpeg4_fixate_src_caps;
+  
   GST_DEBUG ("LEAVE");
 }
 
 /* Obtain the type of the class */
 GType
-gst_ce_h264_encoder_get_type (void)
+gst_ce_mpeg4_encoder_get_type (void)
 {
   static GType object_type = 0;
   if (object_type == 0) {
     static const GTypeInfo object_info = {
-      sizeof (GstCEH264EncoderClass),
-      (GBaseInitFunc) gst_ce_h264_encoder_base_init,
-      (GBaseFinalizeFunc) gst_ce_h264_encoder_base_finalize,
-      (GClassInitFunc) gst_ce_h264_encoder_class_init,
+      sizeof (GstCEMPEG4EncoderClass),
+      (GBaseInitFunc) gst_ce_mpeg4_encoder_base_init,
+      (GBaseFinalizeFunc) gst_ce_mpeg4_encoder_base_finalize,
+      (GClassInitFunc) gst_ce_mpeg4_encoder_class_init,
       NULL,
       NULL,
-      sizeof (GstCEH264Encoder),
+      sizeof (GstCEMPEG4Encoder),
       0,
-      (GInstanceInitFunc) gst_ce_h264_encoder_init,
+      (GInstanceInitFunc) gst_ce_mpeg4_encoder_init,
       NULL
     };
 
     object_type = g_type_register_static (GST_TYPE_CE_VIDENC1,
-        "GstCEH264Encoder", &object_info, (GTypeFlags) 0);
+        "GstCEMPEG4Encoder", &object_info, (GTypeFlags) 0);
   }
   return object_type;
 };

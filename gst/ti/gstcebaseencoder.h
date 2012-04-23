@@ -92,7 +92,7 @@ struct _GstCEBaseEncoder
   pthread_t *processAsyncthread;
   /* Arguments for the async encode process */
   processAsyncArguments *arguments;
-  /* Codec data for the encode data */
+  /* Codec data for the encode */
   gpointer codec_data;
 
 };
@@ -110,8 +110,7 @@ struct _GstCEBaseEncoderClass
     gboolean (*encoder_process_async) (processAsyncArguments * arguments);
     gboolean (*encoder_process_wait) (GstCEBaseEncoder * base_encoder,
       GstBuffer * input_buffer, GstBuffer * output_buffer, gint timeout);
-  GstBuffer *(*encoder_generate_codec_data) (GstCEBaseEncoder * base_encoder,
-      GstBuffer * input_buffer, GstBuffer * output_buffer);
+  GstBuffer *(*encoder_generate_codec_data) (GstBuffer * buffer);
 };
 
 
@@ -245,8 +244,8 @@ GstFlowReturn gst_ce_base_encoder_encode (GstCEBaseEncoder * base_encoder,
  * @param buffer a pointer to a _GstBuffer object
  * @protected
  */
-#define gst_ce_base_encoder_generate_codec_data(obj, in_buf, out_buf) \
-  CE_BASE_ENCODER_GET_CLASS(obj)->encoder_generate_codec_data(GST_CE_BASE_ENCODER(obj), in_buf, out_buf)
+#define gst_ce_base_encoder_generate_codec_data(buf) \
+  CE_BASE_ENCODER_GET_CLASS(obj)->encoder_generate_codec_data(buf)
 
 G_END_DECLS
 #endif

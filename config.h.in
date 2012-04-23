@@ -37,6 +37,9 @@
    */
 #undef LT_OBJDIR
 
+/* MPEG4 encoders accept NV12 format */
+#undef MPEG4_ENCODER_ACCEPTS_NV12
+
 /* Name of package */
 #undef PACKAGE
 

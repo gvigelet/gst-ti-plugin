@@ -148,6 +148,7 @@ if test "x${platform}" = "xdm36x" ; then
     AC_SUBST(CODECS_CFLAGS)
     AC_SUBST(CODECS_LIBS)
     AC_DEFINE([H264_ENCODER_ACCEPTS_NV12],[1],[H264 encoders accept NV12 format])
+    AC_DEFINE([MPEG4_ENCODER_ACCEPTS_NV12],[1],[MPEG4 encoders accept NV12 format])
 fi
 
 if test "x$HAVE_CODECS" = "xno" ; then

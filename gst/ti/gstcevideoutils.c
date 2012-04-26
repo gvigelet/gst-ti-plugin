@@ -39,7 +39,7 @@ gst_ce_video_utils_gst_video_info_to_xdm_content_type (GstVideoFormat format)
 {
   switch (format) {
     case GST_VIDEO_FORMAT_NV12:
-      return IVIDEO_PROGRESSIVE;
+      return IVIDEO_PROGRESSIVE; /* For dm365, this is the only content type that support */
     case GST_VIDEO_FORMAT_UYVY:
       return IVIDEO_PROGRESSIVE;
     default:

@@ -270,9 +270,7 @@ gst_ce_mpeg4_encoder_scan_data(gint8 *data, int data_size, gint ret[]) {
 }*/
 
 static GstBuffer*
-gst_ce_mpeg4_encoder_generate_codec_data (GstBuffer *buffer){
-    
-    
+gst_ce_mpeg4_encoder_implement_generate_codec_data (GstBuffer *buffer){
     
     guchar *data;
     gint i;
@@ -414,7 +412,7 @@ gst_ce_mpeg4_encoder_generate_codec_data (GstCEBaseEncoder * base_encoder,
 /* Implementation of fix_src_caps depending of template src caps 
  * and src_peer caps */
 static gboolean
-gst_ce_mpeg4_fixate_src_caps (GstCEBaseVideoEncoder * base_video_encoder,
+gst_ce_mpeg4_encoder_implement_fixate_src_caps (GstCEBaseVideoEncoder * base_video_encoder,
     GstCaps * filter)
 {
 
@@ -472,16 +470,6 @@ gst_ce_mpeg4_fixate_src_caps (GstCEBaseVideoEncoder * base_video_encoder,
       GST_VIDEO_INFO_FPS_N (&video_encoder->video_info),
       GST_VIDEO_INFO_FPS_D (&video_encoder->video_info), NULL);
 
-  /* Save the specific decision for future use */
-  //mpeg4_encoder->generate_bytestream =
-    //  !strcmp (stream_format, "byte-stream") ? TRUE : FALSE;
-  //mpeg4_encoder->generate_aud = !strcmp (alignment, "aud") ? TRUE : FALSE;
-
-  /* Obtain the codec data  */
-  //codec_data = gst_buffer_new_and_alloc(1);
-  //gst_caps_set_simple (caps, "codec_data", GST_TYPE_BUFFER, codec_data, NULL);
-  
-
   /* Set the src caps and check for errors */
   ret = gst_pad_set_caps (base_encoder->src_pad, caps);
   if (ret == FALSE) {
@@ -517,11 +505,11 @@ gst_ce_mpeg4_encoder_init (GstCEMPEG4Encoder * mpeg4_encoder)
       gst_pad_new_from_static_template (&gst_ce_mpeg4_encoder_sink_factory,
       "sink");
   gst_pad_set_chain_function (base_encoder->sink_pad,
-      GST_DEBUG_FUNCPTR (video_encoder_class->chain));
+      GST_DEBUG_FUNCPTR (video_encoder_class->video_encoder_chain));
   gst_pad_set_event_function (base_encoder->sink_pad,
-      GST_DEBUG_FUNCPTR (video_encoder_class->sink_event));
+      GST_DEBUG_FUNCPTR (video_encoder_class->video_encoder_sink_event));
   gst_pad_set_query_function (base_encoder->sink_pad,
-      GST_DEBUG_FUNCPTR (video_encoder_class->sink_query));
+      GST_DEBUG_FUNCPTR (video_encoder_class->video_encoder_sink_query));
   gst_element_add_pad (GST_ELEMENT (base_encoder), base_encoder->sink_pad);
 
   /* Process the src pad */
@@ -564,6 +552,17 @@ gst_ce_mpeg4_encoder_class_init (GstCEMPEG4EncoderClass * klass)
       "CodecEngine mpeg4 encoder");
 
   GST_DEBUG ("ENTER");
+  
+  /* Instance the class methods */
+  klass->mpeg4_encoder_generate_codec_data = gst_ce_mpeg4_encoder_implement_generate_codec_data;
+  klass->mpeg4_encoder_fixate_src_caps = gst_ce_mpeg4_encoder_implement_fixate_src_caps;
+  
+  /* Override of heredity functions */
+  base_encoder_class->base_encoder_generate_codec_data =
+    GST_DEBUG_FUNCPTR (klass->mpeg4_encoder_generate_codec_data);
+  video_encoder_class->video_encoder_fixate_src_caps = klass->mpeg4_encoder_fixate_src_caps;
+  gobject_class->set_property = gst_ce_mpeg4_encoder_set_property;
+  gobject_class->get_property = gst_ce_mpeg4_encoder_get_property;
 
   gst_element_class_add_pad_template (gstelement_class,
       gst_static_pad_template_get (&gst_ce_mpeg4_encoder_src_factory));
@@ -575,13 +574,7 @@ gst_ce_mpeg4_encoder_class_init (GstCEMPEG4EncoderClass * klass)
           "Assume encoder generates single NAL units per frame encoded to optimize avc stream generation",
           FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));*/
 
-  /* Implementation of inherenci functions */
-  base_encoder_class->encoder_generate_codec_data =
-      GST_DEBUG_FUNCPTR (gst_ce_mpeg4_encoder_generate_codec_data);
-  gobject_class->set_property = gst_ce_mpeg4_encoder_set_property;
-  gobject_class->get_property = gst_ce_mpeg4_encoder_get_property;
-
-  video_encoder_class->fixate_src_caps = gst_ce_mpeg4_fixate_src_caps;
+  
   
   GST_DEBUG ("LEAVE");
 }

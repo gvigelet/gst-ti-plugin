@@ -54,9 +54,45 @@ struct _GstCEVIDENC1
 struct _GstCEVIDENC1Class
 {
   GstCEBaseVideoEncoderClass parent_class;
-
+  
+  gboolean (*videnc1_initialize_params) (GstCEBaseEncoder * base_encoder);
+  gboolean (*videnc1_control) (GstCEBaseEncoder * base_encoder, gint cmd_id);
+  gboolean (*videnc1_delete) (GstCEBaseEncoder * base_encoder);
+  gboolean (*videnc1_create) (GstCEBaseEncoder * base_encoder);
+  gboolean (*videnc1_process_sync) (GstCEBaseEncoder * base_encoder,
+    gpointer input_buffer, gpointer output_buffer);
+  gboolean (*videnc1_process_async) (processAsyncArguments * arguments);
+  gboolean (*videnc1_alloc_params) (GstCEBaseEncoder * base_encoder);
 
 };
+/* Macros that allow access to the method of the class */
+
+/*-------------------*/
+/* Public methods */
+/*-------------------*/
+
+
+#define gst_ce_videnc1_initialize_params(obj) \
+  CE_VIDENC1_GET_CLASS(obj)->videnc1_initialize_params(obj)
+  
+#define gst_ce_videnc1_control(obj, cmd_id) \
+  CE_VIDENC1_GET_CLASS(obj)->videnc1_control(obj, cmd_id)
+
+#define gst_ce_videnc1_delete(obj) \
+  CE_VIDENC1_GET_CLASS(obj)->videnc1_delete(obj)
+
+#define gst_ce_videnc1_create(obj) \
+  CE_VIDENC1_GET_CLASS(obj)->videnc1_create(obj)
+
+#define gst_ce_videnc1_process_sync(obj, in_buf, out_buf) \
+  CE_VIDENC1_GET_CLASS(obj)->videnc1_process_sync(obj, in_buf, out_buf)
+
+#define gst_ce_videnc1_process_async(obj, arg) \
+  CE_VIDENC1_GET_CLASS(obj)->videnc1_process_async(arg)
+  
+#define gst_ce_videnc1_alloc_params(obj) \
+  CE_VIDENC1_GET_CLASS(obj)->videnc1_alloc_params(obj)
+
 
 /* Class functionality */
 GType gst_ce_videnc1_get_type (void);

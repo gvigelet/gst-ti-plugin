@@ -99,194 +99,19 @@ gst_ce_h264_encoder_get_property (GObject * object, guint prop_id,
 }
 
 
-/*static void fetch_nal(guchar *buffer_data, int buffer_data_length, gint type, int *index, int *length)
-{
-    gint i;
-    
-    guchar *data = buffer_data;
-    GstBuffer *nal_buffer;
-    gint nal_idx = 0;
-    gint nal_len = 0;
-    gint nal_type = 0;
-    gint found = 0;
-    gint done = 0;
-
-    for (i = 0; i < buffer_data_length; i++) {
-        if (buffer_data[i] == 0 && buffer_data[i + 1] == 0 && buffer_data[i + 2] == 0 
-            && buffer_data[i + 3] == 1) {
-            if (found == 1) {
-                nal_len = i - nal_idx;
-                done = 1;
-                break;
-            }
-            */
-            /* Calculate the type of the nal */
-            /*nal_type = (buffer_data[i + 4]) & 0x1f;
-               g_print("nal_type: %d type: %d \n", nal_type, type);
-               if (nal_type == type)
-               {
-               found = 1;
-               nal_idx = i + 4;
-               i += 4;
-               g_print("Entro (nal_type == type) found:%d nal_idx:%d\n", found, nal_idx);
-               }
-               }
-               }
-             */
-    /* Check if the NAL stops at the end */
-  /*  g_print("done:%d i:%d buffer_data_length:%d\n", done, i, buffer_data_length);
-     if (found == 1 && i == buffer_data_length) {
-     nal_len = buffer_data_length - nal_idx;
-     done = 1;
-     g_print("Entro primer if\n");
-     }
-
-     if (done == 1) {
-     *index = nal_idx;
-     *length = nal_len;
-     g_print("Entro segundo if\n");
-
-     } else { */
-        /* Indicate that the type of Nal was not found */
-        /* *index = -1;
-         *length = -1;
-         }
-         }*/
-
-/*static GstBuffer*
-gst_ce_h264_encoder_buffer_header(guchar *buffer_data, int buffer_data_lenght){
-    GstBuffer *avcc = NULL;
-    guchar *avcc_data = NULL;
-                                                                                gint avcc_len = 7;*/// Default 7 bytes w/o SPS, PPS data
-    /*gint i;
-
-       GstBuffer *sps = NULL;
-       guchar *sps_data = NULL;
-       gint num_sps=0;
-
-       GstBuffer *pps = NULL;
-       gint num_pps=0;
-
-       guchar profile;
-       guchar compatibly;
-       guchar level;
-       GstMapInfo sps_info;
-       GstMapInfo pps_info;
-       int sps_index = -1;
-       int sps_length = -1;
-       int pps_index = -1;
-       int pps_length = -1;
-
-                                                                                                                                                              fetch_nal(buffer_data, buffer_data_lenght, 7, &sps_index, &sps_length); */// 7 = SPS
-    /*if ((sps_index != -1) && (sps_length != -1)){
-       num_sps = 1;
-       avcc_len += sps_length + 2; */
-        //gst_buffer_map (sps, &sps_info, GST_MAP_WRITE);
-        //sps_data = sps_info.data;
-
-       /* profile     = buffer_data[sps_index + 1];
-          compatibly  = buffer_data[sps_index + 2];
-          level       = buffer_data[sps_index + 3]; 
-
-          } else {
-
-                                                          profile     = 66;   */// Default Profile: Baseline
-        //compatibly  = 0;
-        //level       = 30;   // Default Level: 3.0
-    /*}
-       fetch_nal(buffer_data, buffer_data_lenght, 8, &pps_index, &pps_length); // 8 = PPS
-       if ((pps_index != -1) && (pps_length != -1)){
-       num_pps = 1;
-       avcc_len += pps_length + 2;
-       }
-
-       avcc = gst_buffer_new_and_alloc(avcc_len);
-       GstMapInfo avcc_info;
-       gst_buffer_map (avcc, &avcc_info, GST_MAP_WRITE);
-
-       avcc_data = avcc_info.data;
-                                                                          avcc_data[0] = 1;             */// [0] 1 byte - version
-    //avcc_data[1] = profile;       // [1] 1 byte - h.264 stream profile
-    //avcc_data[2] = compatibly;    // [2] 1 byte - h.264 compatible profiles
-    //avcc_data[3] = level;         // [3] 1 byte - h.264 stream level
-    //avcc_data[4] = 0xfc | (NAL_TAG_LENGTH-1);  // [4] 6 bits - reserved all ONES = 0xfc
-                                  // [4] 2 bits - NAL length ( 0 - 1 byte; 1 - 2 bytes; 3 - 4 bytes)
-    //avcc_data[5] = 0xe0 | num_sps;// [5] 3 bits - reserved all ONES = 0xe0
-                                  // [5] 5 bits - number of SPS
-
-    /*i = 6;
-       if (num_sps > 0){
-       avcc_data[i++] = sps_length >> 8;
-       avcc_data[i++] = sps_length & 0xff;
-       memcpy(&avcc_data[i],(buffer_data + sps_index),sps_length);
-       i += sps_length;
-       }
-                                                                            avcc_data[i++] = num_pps;      */// [6] 1 byte  - number of PPS
-    /*if (num_pps > 0){
-       avcc_data[i++] = pps_length >> 8;
-       avcc_data[i++] = pps_length & 0xff;
-       memcpy(&avcc_data[i],(buffer_data + pps_index),pps_length);
-       i += pps_length;
-       }
-
-       gst_buffer_unmap (avcc, &avcc_info);
-
-       return avcc;
-       }
-
-       /* Function for calculate the pps index in the header */
-/*void 
-gst_ce_h264_encoder_scan_data(gint8 *data, int data_size, gint ret[]) {
-  
-  int index;
-  gboolean first_nal = TRUE;
-  for(index = 0; index < data_size; index++) {
-    if (data[index] == 0 && data[index + 1] == 0 && data[index + 2] == 0 
-        && data[index + 3] == 1) {
-      if(first_nal == TRUE) {
-        first_nal = FALSE;
-      }
-      else {
-                                                                                                                                      index = index + NAL_TAG_LENGTH; *//* jump the nal tag */
-      /*  break;
-         }
-         }
-         }
-       */
-  /* Recognize if sps or pps don't exist */
-  /*if(first_nal == TRUE) {
-     ret[0] = NO_PPS_SPS;
-     ret[1] = index;
-     }
-     else if(index == data_size){
-     ret[0] = NO_PPS;
-     ret[1] = index;
-     }
-                                                      else if(index == 8){ *///8 = after 2 nal tags
-/*    ret[0] = NO_SPS;
-    ret[1] = index;
-  }
-  else {
-    ret[0] = 0;
-    ret[1] = index;
-  } 
-  return ret;
-}*/
 
 /* Function for generate SPS and PPS, and built the codec data */
-static GstBuffer *
+GstBuffer *
 gst_ce_h264_encoder_generate_codec_data (GstCEBaseEncoder * base_encoder,
     GstBuffer * input_buffer, GstBuffer * output_buffer)
 {
 
-  //int buf_exam[2];
-
   /* Set the params */
   VIDENC1_DynamicParams *dynamic_params = base_encoder->codec_dynamic_params;
   dynamic_params->generateHeader = XDM_GENERATE_HEADER;
-  CE_BASE_ENCODER_GET_CLASS (base_encoder)->encoder_control (base_encoder,
-      XDM_SETPARAMS);
-
+  
+  gst_ce_base_encoder_control(base_encoder, XDM_SETPARAMS);
+  
 
   /* Generate SPS and PPS */
   GstBuffer *ret;
@@ -366,8 +191,7 @@ gst_ce_h264_encoder_generate_codec_data (GstCEBaseEncoder * base_encoder,
   /* Restart the params */
   dynamic_params->generateHeader = XDM_ENCODE_AU;
   dynamic_params->forceFrame = XDM_ENCODE_AU;
-  CE_BASE_ENCODER_GET_CLASS (base_encoder)->encoder_control (base_encoder,
-      XDM_SETPARAMS);
+  gst_ce_base_encoder_control(base_encoder, XDM_SETPARAMS);
 
   return ret;
 
@@ -376,7 +200,7 @@ gst_ce_h264_encoder_generate_codec_data (GstCEBaseEncoder * base_encoder,
 /* Implementation of fix_src_caps depending of template src caps 
  * and src_peer caps */
 static gboolean
-gst_ce_h264_fixate_src_caps (GstCEBaseVideoEncoder * base_video_encoder,
+gst_ce_h264_encoder_implement_fixate_src_caps (GstCEBaseVideoEncoder * base_video_encoder,
     GstCaps * filter)
 {
 
@@ -451,8 +275,8 @@ gst_ce_h264_fixate_src_caps (GstCEBaseVideoEncoder * base_video_encoder,
   h264_encoder->generate_aud = !strcmp (alignment, "aud") ? TRUE : FALSE;
 
   /* Obtain the codec data  */
-  input_buffer = gst_buffer_new_and_alloc (100);
-  output_buffer = gst_buffer_new_and_alloc (100);
+  input_buffer = gst_buffer_new_and_alloc (100); /* Dummy buffers */
+  output_buffer = gst_buffer_new_and_alloc (100); /* Dummy buffers */
   codec_data =
       gst_ce_h264_encoder_generate_codec_data (GST_CE_BASE_ENCODER
       (base_video_encoder), input_buffer, output_buffer);
@@ -495,11 +319,11 @@ gst_ce_h264_encoder_init (GstCEH264Encoder * h264_encoder)
       gst_pad_new_from_static_template (&gst_ce_h264_encoder_sink_factory,
       "sink");
   gst_pad_set_chain_function (base_encoder->sink_pad,
-      GST_DEBUG_FUNCPTR (video_encoder_class->chain));
+      GST_DEBUG_FUNCPTR (video_encoder_class->video_encoder_chain));
   gst_pad_set_event_function (base_encoder->sink_pad,
-      GST_DEBUG_FUNCPTR (video_encoder_class->sink_event));
+      GST_DEBUG_FUNCPTR (video_encoder_class->video_encoder_sink_event));
   gst_pad_set_query_function (base_encoder->sink_pad,
-      GST_DEBUG_FUNCPTR (video_encoder_class->sink_query));
+      GST_DEBUG_FUNCPTR (video_encoder_class->video_encoder_sink_query));
   gst_element_add_pad (GST_ELEMENT (base_encoder), base_encoder->sink_pad);
 
   /* Process the src pad */
@@ -542,24 +366,26 @@ gst_ce_h264_encoder_class_init (GstCEH264EncoderClass * klass)
       "CodecEngine h264 encoder");
 
   GST_DEBUG ("ENTER");
+  
+  /* Instance the class methods */
+  klass->h264_encoder_fixate_src_caps = gst_ce_h264_encoder_implement_fixate_src_caps;
+  
+  /* Override of heredity functions */
+  video_encoder_class->video_encoder_fixate_src_caps = klass->h264_encoder_fixate_src_caps;
   gobject_class->set_property = gst_ce_h264_encoder_set_property;
   gobject_class->get_property = gst_ce_h264_encoder_get_property;
-
-  video_encoder_class->fixate_src_caps = gst_ce_h264_fixate_src_caps;
 
   gst_element_class_add_pad_template (gstelement_class,
       gst_static_pad_template_get (&gst_ce_h264_encoder_src_factory));
   gst_element_class_add_pad_template (gstelement_class,
       gst_static_pad_template_get (&gst_ce_h264_encoder_sink_factory));
 
-  g_object_class_install_property (gobject_class, PROP_SINGLE_NAL,
+  /*g_object_class_install_property (gobject_class, PROP_SINGLE_NAL,
       g_param_spec_boolean ("single-nal", "Single NAL optimization",
           "Assume encoder generates single NAL units per frame encoded to optimize avc stream generation",
-          FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+          FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));*/
 
-  /* Implementation of inherenci functions */
-  //base_encoder_class->encoder_generate_codec_data =
-    //  GST_DEBUG_FUNCPTR (gst_ce_h264_encoder_generate_codec_data);
+
 
   GST_DEBUG ("LEAVE");
 }

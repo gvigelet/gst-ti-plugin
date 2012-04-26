@@ -67,50 +67,7 @@ gst_ce_base_video_encoder_get_property (GObject * object, guint prop_id,
   }
 }
 
-/* Free the codec instance in case of no null */
-gboolean
-gst_ce_base_encoder_finalize_codec (GstCEBaseVideoEncoder * video_encoder)
-{
-  GstCEBaseEncoder *base_encoder = GST_CE_BASE_ENCODER (video_encoder);
-
-  if (base_encoder->codec_handle != NULL) {
-    if (!gst_ce_base_encoder_delete (base_encoder))
-      return FALSE;
-  }
-
-  return TRUE;
-}
-
-/* Check for a previews instance of the codec, init the params and create the codec instance */
-gboolean
-gst_ce_base_encoder_init_codec (GstCEBaseVideoEncoder * video_encoder)
-{
-
-  /* Finalize any previous configuration  */
-  if (!gst_ce_base_encoder_finalize_codec (video_encoder))
-    return FALSE;
-
-  /* Set the value of the params */
-  if (!gst_ce_base_encoder_initialize_params (video_encoder))
-    return FALSE;
-
-  /* Give a chance to downstream caps to modify the params or dynamic
-   * params before we use them
-   */
-  //if (! CE_BASE_VIDEO_ENCODER_GET_CLASS(video_encoder)->(
-  //  video_encoder))
-  //return FALSE;
-
-  /* Create the codec instance */
-  if (!gst_ce_base_encoder_create (video_encoder))
-    return FALSE;
-
-
-  /* TODO: create buffers, and initialize dynamic params */
-
-  return TRUE;
-}
-
+/* Default implementation of the method  video_encoder_sink_set_caps */
 static gboolean
 gst_ce_base_video_encoder_default_sink_set_caps (GstCEBaseVideoEncoder *
     video_encoder, GstCaps * caps)
@@ -131,7 +88,7 @@ gst_ce_base_video_encoder_default_sink_set_caps (GstCEBaseVideoEncoder *
   ret = gst_ce_base_encoder_init_codec (video_encoder);
 
   /* Fixate and set caps */
-  gst_ce_base_video_encoder_src_fixate_caps (video_encoder, caps);
+  gst_ce_base_video_encoder_fixate_src_caps (video_encoder, caps);
 
   GST_DEBUG_OBJECT (video_encoder,
       "Leave default_sink_set_caps base video encoder");
@@ -319,18 +276,10 @@ gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
     }
   }
 
-  /* reused the buffers */
-  buffer_in =
-      (GstBuffer *)
-      GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers;
-  buffer_out =
-      (GstBuffer *)
-      GST_CE_BASE_ENCODER (video_encoder)->submitted_output_buffers;
-
   /* Encode the actual buffer and push the previously buffer */
   ret =
       gst_ce_base_encoder_encode (GST_CE_BASE_ENCODER (video_encoder),
-      buffer_in, buffer_out, buffer);
+        buffer);
 
   /* unref the original buffer */
   gst_buffer_unref (buffer);
@@ -348,20 +297,26 @@ gst_ce_base_video_encoder_class_init (GstCEBaseVideoEncoderClass *
   /* Init debug instance */
   GST_DEBUG_CATEGORY_INIT (gst_ce_base_video_encoder_debug,
       "cebasevideoencoder", 0, "CodecEngine base video encoder Class");
-
-  /* Override inheritance methods */
+   
+   GST_DEBUG ("ENTER");
+  
+  /* Instance the class methods */
+  video_encoder_class->video_encoder_chain =
+      GST_DEBUG_FUNCPTR (gst_ce_base_video_encoder_default_chain);
+  video_encoder_class->video_encoder_sink_event =
+      GST_DEBUG_FUNCPTR (gst_ce_base_video_encoder_default_sink_event);
+  video_encoder_class->video_encoder_sink_query =
+      GST_DEBUG_FUNCPTR (gst_ce_base_video_encoder_default_sink_query);
+  video_encoder_class->video_encoder_sink_get_caps =
+      GST_DEBUG_FUNCPTR (gst_ce_base_video_encoder_default_sink_get_caps);
+  video_encoder_class->video_encoder_sink_set_caps =
+      GST_DEBUG_FUNCPTR (gst_ce_base_video_encoder_default_sink_set_caps);
+  
+  /* Override heredity methods */
   gobject_class->set_property = gst_ce_base_video_encoder_set_property;
   gobject_class->get_property = gst_ce_base_video_encoder_get_property;
-  video_encoder_class->chain =
-      GST_DEBUG_FUNCPTR (gst_ce_base_video_encoder_default_chain);
-  video_encoder_class->sink_event =
-      GST_DEBUG_FUNCPTR (gst_ce_base_video_encoder_default_sink_event);
-  video_encoder_class->sink_query =
-      GST_DEBUG_FUNCPTR (gst_ce_base_video_encoder_default_sink_query);
-  video_encoder_class->sink_get_caps =
-      GST_DEBUG_FUNCPTR (gst_ce_base_video_encoder_default_sink_get_caps);
-  video_encoder_class->sink_set_caps =
-      GST_DEBUG_FUNCPTR (gst_ce_base_video_encoder_default_sink_set_caps);
+
+  GST_DEBUG ("LEAVE"); 
 }
 
 static void

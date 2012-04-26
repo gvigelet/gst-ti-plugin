@@ -51,7 +51,27 @@ struct _GstCEMPEG4Encoder
 struct _GstCEMPEG4EncoderClass
 {
   GstCEVIDENC1Class parent_class;
+  gboolean (*mpeg4_encoder_fixate_src_caps) (GstCEBaseVideoEncoder * base_video_encoder,
+    GstCaps * filter);
+  GstBuffer *(*mpeg4_encoder_generate_codec_data) (GstBuffer * buffer);
 };
+
+
+/* Macros that allow access to the methods of the class */
+
+/*-------------------*/
+/* Public methods ***/
+/*-------------------*/
+
+#define gst_ce_mpeg4_encoder_fixate_src_caps(obj, filter) \
+  CE_MPEG4_ENCODER_GET_CLASS(GST_CE_MPEG4_ENCODER(obj))->mpeg4_encoder_fixate_src_caps(obj, filter)
+
+#define gst_ce_mpeg4_encoder_generate_codec_data(obj, buf) \
+  CE_H264_ENCODER_GET_CLASS(GST_CE_H264_ENCODER(obj))->mpeg4_encoder_generate_codec_data(buf)
+
+
+/* Auxiliar functions for the class
+ * Work similar to public methods  */
 
 GType gst_ce_mpeg4_encoder_get_type (void);
 

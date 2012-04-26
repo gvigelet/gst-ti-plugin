@@ -22,7 +22,6 @@
 #include <gst/gst.h>
 
 G_BEGIN_DECLS
-#define DEFAULT_BUF_SIZE 1382400
 #define GST_TYPE_CE_BASE_ENCODER \
   (gst_ce_base_encoder_get_type())
 #define GST_CE_BASE_ENCODER(obj) \
@@ -54,6 +53,7 @@ struct _GstCEBaseEncoder
    * @protected
    */
   GstPad *sink_pad;
+  
   /** 
    * @brief src pad of the encoder
    * @details This object is instatiated by a any sub-class (usually the 
@@ -80,18 +80,22 @@ struct _GstCEBaseEncoder
   /* Pointers to hold data submitted into CodecEngine */
   /* Input buffer for the encoder instance */
   gpointer submitted_input_buffers;
+  
   /* Output buffer of the encoder instance */
   gpointer submitted_output_buffers;
-  /* Output buffer of the encoder instance */
-  gpointer submitted_push_output_buffers;
+   
   /* Input arguments for the encoder instance */
   gpointer submitted_input_arguments;
+  
   /* Output arguments of the encoder instance */
   gpointer submitted_output_arguments;
+  
   /* Thread for async encode process */
-  pthread_t *processAsyncthread;
+  pthread_t *process_async_thread;
+  
   /* Arguments for the async encode process */
-  processAsyncArguments *arguments;
+  processAsyncArguments *process_async_arguments;
+  
   /* Codec data for the encode */
   gpointer codec_data;
 
@@ -101,31 +105,138 @@ struct _GstCEBaseEncoderClass
 {
   GstElementClass parent_class;
 
-    gboolean (*encoder_initialize_params) (GstCEBaseEncoder * base_encoder);
-    gboolean (*encoder_control) (GstCEBaseEncoder * base_encoder, gint cmd_id);
-    gboolean (*encoder_delete) (GstCEBaseEncoder * base_encoder);
-    gboolean (*encoder_create) (GstCEBaseEncoder * base_encoder);
-    gboolean (*encoder_process_sync) (GstCEBaseEncoder * base_encoder,
-      GstBuffer * input_buffer, GstBuffer * output_buffer);
-    gboolean (*encoder_process_async) (processAsyncArguments * arguments);
-    gboolean (*encoder_process_wait) (GstCEBaseEncoder * base_encoder,
-      GstBuffer * input_buffer, GstBuffer * output_buffer, gint timeout);
-  GstBuffer *(*encoder_generate_codec_data) (GstBuffer * buffer);
+  gboolean (*base_encoder_initialize_params) (GstCEBaseEncoder * base_encoder);
+  gboolean (*base_encoder_control) (GstCEBaseEncoder * base_encoder, gint cmd_id);
+  gboolean (*base_encoder_delete) (GstCEBaseEncoder * base_encoder);
+  gboolean (*base_encoder_create) (GstCEBaseEncoder * base_encoder);
+  gboolean (*base_encoder_process_sync) (GstCEBaseEncoder * base_encoder,
+    gpointer input_buffer, gpointer output_buffer);
+  gboolean (*base_encoder_process_async) (processAsyncArguments * arguments);
+  gpointer (*base_encoder_generate_codec_data) (gpointer push_out_buffer);
+  gpointer (*base_encoder_encode) (GstCEBaseEncoder * base_encoder, gpointer raw_data_buffer);
+  gboolean (*base_encoder_init_codec) (GstCEBaseEncoder * base_encoder);
+  gboolean (*base_encoder_finalize_codec) (GstCEBaseEncoder * base_encoder);
 };
 
 
 struct _processAsyncArguments
 {
   GstCEBaseEncoder *base_encoder;
-  GstBuffer *input_buffer;
-  GstBuffer *output_buffer;
+  gpointer input_buffer;
+  gpointer output_buffer;
 };
 
 GType gst_ce_base_encoder_get_type (void);
 
+/* Macros that allow access to the methods of the class */
+
 /*------------------*/
 /* Public functions */
 /*------------------*/
+
+#define gst_ce_base_encoder_finalize_codec(obj) \
+  CE_BASE_ENCODER_GET_CLASS(obj)->base_encoder_finalize_codec(obj)
+
+#define gst_ce_base_encoder_init_codec(obj) \
+  CE_BASE_ENCODER_GET_CLASS(obj)->base_encoder_init_codec(obj)
+
+#define gst_ce_base_encoder_process_sync(obj, input_buf, output_buf) \
+  CE_BASE_ENCODER_GET_CLASS(obj)->base_encoder_process_sync(obj, input_buf, output_buf)
+
+
+/**
+ * @memberof _GstCEBaseEncoder
+ * @brief Allocates output buffers for share efficiently with co-processors
+ * @details This function allocates GstBuffers that are contiguous on memory
+ *  (have #_GstCMEMMeta). This buffers can be shrinked efficiently to re-use the
+ *  limited-available contiguous memory.
+ * @param base_encoder a pointer to a _GstCEBaseEncoder object
+ * @param size the size of the buffer
+ */
+#define gst_ce_base_encoder_generate_codec_data(obj, push_out_buf) \
+  CE_BASE_ENCODER_GET_CLASS(obj)->base_encoder_generate_codec_data(push_out_buf)
+
+/**
+ * @memberof _GstCEBaseEncoder
+ * @brief Allocates output buffers for share efficiently with co-processors
+ * @details This function allocates GstBuffers that are contiguous on memory
+ *  (have #_GstCMEMMeta). This buffers can be shrinked efficiently to re-use the
+ *  limited-available contiguous memory.
+ * @param base_encoder a pointer to a _GstCEBaseEncoder object
+ * @param size the size of the buffer
+ */
+#define gst_ce_base_encoder_encode(obj, raw_data_buf) \
+  CE_BASE_ENCODER_GET_CLASS(obj)->base_encoder_encode(obj, raw_data_buf)
+
+
+/*--------------------*/
+/* Abstract functions */
+/*--------------------*/
+
+/** 
+ * @memberof _GstCEBaseEncoder
+ * @fn void gst_ce_base_encoder_generate_codec_data(_GstCEBaseEncoder *base_encoder, GstBuffer *push_out_buf)
+ * @brief Abstract function that implements the generation of the codec data for the encoder.
+ * @details This function is implemented by a sub-class that known the specific form of generate
+ * codec data according to the encoder algorithm.
+ * @param base_encoder a pointer to a _GstCEBaseEncoder object
+ * @param push_out_buf a pointer to the buffer for being push to the next element
+ * @protected
+ */
+#define gst_ce_base_encoder_generate_codec_data(obj, push_out_buf) \
+  CE_BASE_ENCODER_GET_CLASS(obj)->base_encoder_generate_codec_data(push_out_buf)
+
+
+/** 
+ * @memberof _GstCEBaseEncoder
+ * @fn void gst_ce_base_encoder_initialize_params(_GstCEBaseEncoder *base_encoder)
+ * @brief Abstract function that implements the initialization of static
+ *  and dynamic parameters for the codec.
+ * @details This function is implemented by a sub-class that handles the right CodecEngine API (live VIDENC1, or IMGENC)
+ * @param base_encoder a pointer to a _GstCEBaseEncoder object
+ * @protected
+ */
+#define gst_ce_base_encoder_initialize_params(obj) \
+  CE_BASE_ENCODER_GET_CLASS(obj)->base_encoder_initialize_params(GST_CE_BASE_ENCODER(obj))
+
+/** 
+ * @memberof _GstCEBaseEncoder
+ * @fn gint32 gst_ce_base_encoder_control(_GstCEBaseEncoder *base_encoder)
+ * @brief Abstract function that implements controlling behavior of the codec.
+ * @details This function is implemented by a sub-class that handles the right CodecEngine API (live VIDENC1, or IMGENC)
+ * @param base_encoder a pointer to a _GstCEBaseEncoder object
+ * @protected
+ */
+#define gst_ce_base_encoder_control(obj, cmd) \
+  CE_BASE_ENCODER_GET_CLASS(obj)->base_encoder_control(GST_CE_BASE_ENCODER(obj), cmd)
+
+/** 
+ * @memberof _GstCEBaseEncoder
+ * @fn void gst_ce_base_encoder_delete(_GstCEBaseEncoder *base_encoder)
+ * @brief Abstract function that implements deleting the instance of the codec.
+ * @details This function is implemented by a sub-class that handles the right CodecEngine API (live VIDENC1, or IMGENC)
+ * @param base_encoder a pointer to a _GstCEBaseEncoder object
+ * @protected
+ */
+#define gst_ce_base_encoder_delete(obj) \
+  CE_BASE_ENCODER_GET_CLASS(obj)->base_encoder_delete(GST_CE_BASE_ENCODER(obj))
+
+/** 
+ * @memberof _GstCEBaseEncoder
+ * @fn gpointer gst_ce_base_encoder_create(_GstCEBaseEncoder *base_encoder)
+ * @brief Abstract function that implements creating an instance of the codec
+ * @details This function is implemented by a sub-class that handles the right CodecEngine API (live VIDENC1, or IMGENC)
+ * @param base_encoder a pointer to a _GstCEBaseEncoder object
+ * @protected
+ */
+#define gst_ce_base_encoder_create(obj) \
+  CE_BASE_ENCODER_GET_CLASS(obj)->base_encoder_create(GST_CE_BASE_ENCODER(obj))
+
+
+
+/* Auxiliar functions for the class
+ * Work similar to public methods  */
+
 /**
  * @memberof _GstCEBaseEncoder
  * @brief Allocates output buffers for share efficiently with co-processors
@@ -150,102 +261,6 @@ GstBuffer *gst_ce_base_encoder_get_output_buffer (GstCEBaseEncoder *
 void gst_ce_base_encoder_shrink_output_buffer (GstCEBaseEncoder * base_encoder,
     GstBuffer * buffer, gsize new_size);
 
-/**
- * @memberof _GstCEBaseEncoder
- * @brief Encode the input_buffer
- * @details This function doing the generic process for encode the input buffer.
- * @param base_encoder a pointer to a _GstCEBaseEncoder object
- * @param input_buffer buffer to be encode
- * @param output_buffer buffer with the result encode data
- */
-GstFlowReturn gst_ce_base_encoder_encode (GstCEBaseEncoder * base_encoder,
-    GstBuffer * input_buffer, GstBuffer * output_buffer, GstBuffer * raw_data);
-
-
-/*--------------------*/
-/* Abstract functions */
-/*--------------------*/
-
-/** 
- * @memberof _GstCEBaseEncoder
- * @fn void gst_ce_base_encoder_initialize_params(_GstCEBaseEncoder *base_encoder)
- * @brief Abstract function that implements the initialization of static
- *  and dynamic parameters for the codec.
- * @details This function is implemented by a sub-class that handles the right CodecEngine API (live VIDENC1, or IMGENC)
- * @param base_encoder a pointer to a _GstCEBaseEncoder object
- * @protected
- */
-#define gst_ce_base_encoder_initialize_params(obj) \
-  CE_BASE_ENCODER_GET_CLASS(obj)->encoder_initialize_params(GST_CE_BASE_ENCODER(obj))
-
-/** 
- * @memberof _GstCEBaseEncoder
- * @fn gint32 gst_ce_base_encoder_control(_GstCEBaseEncoder *base_encoder)
- * @brief Abstract function that implements controlling behavior of the codec.
- * @details This function is implemented by a sub-class that handles the right CodecEngine API (live VIDENC1, or IMGENC)
- * @param base_encoder a pointer to a _GstCEBaseEncoder object
- * @protected
- */
-#define gst_ce_base_encoder_control(obj) \
-  CE_BASE_ENCODER_GET_CLASS(obj)->encoder_control(GST_CE_BASE_ENCODER(obj))
-
-/** 
- * @memberof _GstCEBaseEncoder
- * @fn void gst_ce_base_encoder_delete(_GstCEBaseEncoder *base_encoder)
- * @brief Abstract function that implements deleting the instance of the codec.
- * @details This function is implemented by a sub-class that handles the right CodecEngine API (live VIDENC1, or IMGENC)
- * @param base_encoder a pointer to a _GstCEBaseEncoder object
- * @protected
- */
-#define gst_ce_base_encoder_delete(obj) \
-  CE_BASE_ENCODER_GET_CLASS(obj)->encoder_delete(GST_CE_BASE_ENCODER(obj))
-
-/** 
- * @memberof _GstCEBaseEncoder
- * @fn gpointer gst_ce_base_encoder_create(_GstCEBaseEncoder *base_encoder)
- * @brief Abstract function that implements creating an instance of the codec
- * @details This function is implemented by a sub-class that handles the right CodecEngine API (live VIDENC1, or IMGENC)
- * @param base_encoder a pointer to a _GstCEBaseEncoder object
- * @protected
- */
-#define gst_ce_base_encoder_create(obj) \
-  CE_BASE_ENCODER_GET_CLASS(obj)->encoder_create(GST_CE_BASE_ENCODER(obj))
-
-/* 
- * @memberof _GstCEBaseEncoder
- * @fn gint32 gst_ce_base_encoder_process_async(_GstCEBaseEncoder *base_encoder, GstBuffer *input_buffer, GstBuffer *output_buffer)
- * @brief Abstract function that implements. Instance handles must not be concurrently accessed by multiple threads.
- * @details This function is implemented by a sub-class that handles the right CodecEngine API (live VIDENC1, or IMGENC)
- * @param base_encoder a pointer to a _GstCEBaseEncoder object
- * @param input_buffer a pointer containing input buffers.
- * @param output_buffer a pointer containing output buffers. 
- * @protected
- */
-/*#define gst_ce_base_encoder_process_async(obj, in_buf, out_buf) \
-  CE_BASE_ENCODER_GET_CLASS(obj)->encoder_process_async(GST_CE_BASE_ENCODER(obj), in_buf, out_buf)
-*/
-/** 
- * @memberof _GstCEBaseEncoder
- * @fn gint32 gst_ce_base_encoder_process_wait(_GstCEBaseEncoder *base_encoder)
- * @brief Abstract function that implements waiting for a return message 
- * from a previous invocation of gst_ce_base_encoder_process_async() in this instance of the codec. 
- * @details This function is implemented by a sub-class that handles the right CodecEngine API (live VIDENC1, or IMGENC)
- * @param base_encoder a pointer to a _GstCEBaseEncoder object
- * @protected
- */
-#define gst_ce_base_encoder_process_wait(obj, in_buf, out_buf, time_out) \
-  CE_BASE_ENCODER_GET_CLASS(obj)->encoder_process_wait(GST_CE_BASE_ENCODER(obj), in_buf, out_buf, time_out)
-
-/** 
- * @memberof _GstCEBaseEncoder
- * @fn GstBuffer* gst_ce_h264_encoder_generate_codec_data (GstBuffer *buffer)
- * @brief Abstract function that implements generate the codec data for the encoder 
- * @details This function is implemented by a sub-class that handles the right CodecEngine API (live VIDENC1, or IMGENC)
- * @param buffer a pointer to a _GstBuffer object
- * @protected
- */
-#define gst_ce_base_encoder_generate_codec_data(buf) \
-  CE_BASE_ENCODER_GET_CLASS(obj)->encoder_generate_codec_data(buf)
 
 G_END_DECLS
 #endif

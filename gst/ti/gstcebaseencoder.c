@@ -134,7 +134,6 @@ static void
 gst_ce_base_encoder_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec)
 {
-
   /* Get base params */
   switch (prop_id) {
     default:

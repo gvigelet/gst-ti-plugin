@@ -58,7 +58,7 @@ static GstStaticPadTemplate gst_ce_h264_encoder_src_factory =
 enum
 {
   PROP_0,
-  PROP_SINGLE_NAL
+  PROP_FORCEINTRA
 };
 
 
@@ -73,32 +73,6 @@ static void
 gst_ce_h264_encoder_base_finalize (GstCEH264EncoderClass * klass)
 {
 }
-
-static void
-gst_ce_h264_encoder_set_property (GObject * object, guint prop_id,
-    const GValue * value, GParamSpec * pspec)
-{
-  switch (prop_id) {
-    case PROP_SINGLE_NAL:
-      break;
-    default:
-      break;
-  }
-}
-
-static void
-gst_ce_h264_encoder_get_property (GObject * object, guint prop_id,
-    GValue * value, GParamSpec * pspec)
-{
-  switch (prop_id) {
-    case PROP_SINGLE_NAL:
-      break;
-    default:
-      break;
-  }
-}
-
-
 
 /* Function for generate SPS and PPS, and built the codec data */
 GstBuffer *
@@ -148,11 +122,10 @@ gst_ce_h264_encoder_generate_codec_data (GstCEBaseEncoder * base_encoder,
       (base_encoder)->video_info, 0);
 
   /* The next piece of code depend of the mime type of the buffer */
-  inBufDesc.bufDesc[0].bufSize = gst_buffer_get_size (input_buffer);    /*NNPodria ser esto */
+  inBufDesc.bufDesc[0].bufSize = gst_buffer_get_size (input_buffer);   
   inBufDesc.bufDesc[0].buf = info_in.data;
   inBufDesc.bufDesc[1].bufSize = gst_buffer_get_size (input_buffer);
-  inBufDesc.bufDesc[1].buf = info_in.data + (inBufDesc.frameWidth * inBufDesc.frameHeight);     //(gst_buffer_get_size(input_buffer) * (2 / 3));
-  //inBufDesc.numBufs = 2;
+  inBufDesc.bufDesc[1].buf = info_in.data + (inBufDesc.framePitch * inBufDesc.frameHeight);    
 
   /* Prepare the output buffer descriptor for the encode process */
   outBufSizeArray[0] = gst_buffer_get_size (output_buffer);
@@ -186,7 +159,6 @@ gst_ce_h264_encoder_generate_codec_data (GstCEBaseEncoder * base_encoder,
   ret = gst_buffer_new_and_alloc (outArgs->encodedBuf.bufSize);
   gst_buffer_fill (ret, 0, outArgs->encodedBuf.buf,
       outArgs->encodedBuf.bufSize);
-  //ret = gst_ce_h264_encoder_buffer_header(outArgs->encodedBuf.buf, outArgs->encodedBuf.bufSize);
 
   /* Restart the params */
   dynamic_params->generateHeader = XDM_ENCODE_AU;
@@ -237,12 +209,16 @@ gst_ce_h264_encoder_implement_fixate_src_caps (GstCEBaseVideoEncoder * base_vide
     /* We got something useful */
     caps = othercaps;
   }
-
+  
+  if(!gst_caps_is_writable(caps)) {
+    caps = gst_caps_make_writable(caps);
+  }
+  
   /* Check that the caps are fixated */
   if (!gst_caps_is_fixed (caps)) {
     gst_caps_fixate (caps);
   }
-
+  
   structure = gst_caps_get_structure (caps, 0);
   if (structure == NULL) {
     GST_ERROR_OBJECT (base_video_encoder, "Failed to get src caps structure");
@@ -281,15 +257,16 @@ gst_ce_h264_encoder_implement_fixate_src_caps (GstCEBaseVideoEncoder * base_vide
       gst_ce_h264_encoder_generate_codec_data (GST_CE_BASE_ENCODER
       (base_video_encoder), input_buffer, output_buffer);
   gst_caps_set_simple (caps, "codec_data", GST_TYPE_BUFFER, codec_data, NULL);
-
+  gst_buffer_unref(codec_data);;
+  gst_buffer_unref(input_buffer);
+  gst_buffer_unref(output_buffer);
+  
   base_encoder->codec_data = codec_data;
 
   /* Set the src caps and check for errors */
   ret = gst_pad_set_caps (base_encoder->src_pad, caps);
   if (ret == FALSE) {
     GST_WARNING_OBJECT (h264_encoder, "Caps can't be set", ret);
-  } else {
-    GST_DEBUG_OBJECT (h264_encoder, "Caps set succesfull");
   }
 
   GST_DEBUG_OBJECT (h264_encoder, "Leave fixate_src_caps h264 encoder");
@@ -349,6 +326,48 @@ gst_ce_h264_encoder_init (GstCEH264Encoder * h264_encoder)
 
 }
 
+/* Set properties own from the h264 format */
+static void
+gst_ce_h264_encoder_set_property (GObject * object, guint prop_id,
+    const GValue * value, GParamSpec * pspec)
+{
+  
+  VIDENC1_DynamicParams *dynamic_params = GST_CE_BASE_ENCODER(object)->codec_dynamic_params;
+  
+  switch (prop_id) {
+    case PROP_FORCEINTRA:
+      dynamic_params->forceFrame = g_value_get_boolean(value)?IVIDEO_IDR_FRAME:IVIDEO_NA_FRAME;
+      break;
+    default:
+      break;
+  }
+}
+
+/* Get properties own from the h264 format */
+static void
+gst_ce_h264_encoder_get_property (GObject * object, guint prop_id,
+    GValue * value, GParamSpec * pspec)
+{
+  VIDENC1_DynamicParams *dynamic_params = GST_CE_BASE_ENCODER(object)->codec_dynamic_params;
+  switch (prop_id) {
+    case PROP_FORCEINTRA:
+      g_value_set_boolean(value, dynamic_params->forceFrame==IVIDEO_NA_FRAME?FALSE:TRUE);
+      break;
+    default:
+      break;
+  }
+}
+
+/* Install properties own from h264 format  */
+void gst_ce_h264_install_properties(GObjectClass *gobject_class) {
+  
+    g_object_class_install_property(gobject_class, PROP_FORCEINTRA,
+        g_param_spec_boolean("forceintra",
+            "Force next frame to be an intracodec frame",
+            "Force next frame to be an intracodec frame",
+            FALSE, G_PARAM_READWRITE));
+}
+
 /* class_init of the class */
 static void
 gst_ce_h264_encoder_class_init (GstCEH264EncoderClass * klass)
@@ -379,7 +398,10 @@ gst_ce_h264_encoder_class_init (GstCEH264EncoderClass * klass)
       gst_static_pad_template_get (&gst_ce_h264_encoder_src_factory));
   gst_element_class_add_pad_template (gstelement_class,
       gst_static_pad_template_get (&gst_ce_h264_encoder_sink_factory));
-
+  
+  /* Install properties for the class */
+  gst_ce_h264_install_properties(gobject_class);
+  
   /*g_object_class_install_property (gobject_class, PROP_SINGLE_NAL,
       g_param_spec_boolean ("single-nal", "Single NAL optimization",
           "Assume encoder generates single NAL units per frame encoded to optimize avc stream generation",

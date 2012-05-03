@@ -83,16 +83,21 @@ gst_ce_base_video_encoder_default_sink_set_caps (GstCEBaseVideoEncoder *
     goto refuse_caps;
 
   video_encoder->video_info = info;
-
+  
+  /* Free any previus definition of base atributes */
+  gst_ce_base_encoder_finalize_attributes(GST_CE_BASE_ENCODER(video_encoder));
+  
   /* We are ready to init the codec */
-  ret = gst_ce_base_encoder_init_codec (video_encoder);
+  if(!gst_ce_base_encoder_init_codec (video_encoder)) 
+    goto refuse_caps;
 
   /* Fixate and set caps */
-  gst_ce_base_video_encoder_fixate_src_caps (video_encoder, caps);
+  if(!gst_ce_base_video_encoder_fixate_src_caps (video_encoder, caps)) 
+    goto refuse_caps;
 
   GST_DEBUG_OBJECT (video_encoder,
       "Leave default_sink_set_caps base video encoder");
-  return ret;
+  return TRUE;
 
   /* ERRORS */
 refuse_caps:
@@ -174,10 +179,12 @@ gst_ce_base_video_encoder_default_sink_event (GstPad * pad, GstObject * parent,
       GstCaps *caps;
 
       gst_event_parse_caps (event, &caps);
-
+      
       /* Set src caps */
       res = gst_ce_base_video_encoder_sink_set_caps (video_encoder, caps);
       gst_event_unref (event);
+      
+      
       break;
     }
     default:
@@ -244,10 +251,10 @@ gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
   GstBuffer *buffer_in;
   GstBuffer *buffer_out;
   GstBuffer *buffer_push_out;
-  GstBuffer *buffer_push_out2;
 
   start = gst_util_get_timestamp ();
-
+  
+  /* Check if the buffers were set */
   if (GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers == NULL) {
 
     /* Config the input and output buffer */
@@ -276,11 +283,33 @@ gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
     }
   }
 
-  /* Encode the actual buffer and push the previously buffer */
-  ret =
-      gst_ce_base_encoder_encode (GST_CE_BASE_ENCODER (video_encoder),
-        buffer);
+  /* Encode the actual buffer */
+  gst_ce_base_encoder_encode (GST_CE_BASE_ENCODER (video_encoder),
+    buffer);
+  
+  buffer_push_out = (GstBuffer *)(GST_CE_BASE_ENCODER (video_encoder)->submitted_push_out_buffers);
+  
+  if (buffer_push_out == NULL) {
+    /* Only obtain the next buffer */
+    ret = GST_FLOW_OK;
+  } else {
 
+    /* Copy extra data from the original buffer to the push out buffer */
+    gst_buffer_copy_into (buffer_push_out, buffer, GST_BUFFER_COPY_META, 0,
+        gst_buffer_get_size (buffer));
+    gst_buffer_copy_into (buffer_push_out, buffer, GST_BUFFER_COPY_TIMESTAMPS,
+        0, gst_buffer_get_size (buffer));
+    gst_buffer_copy_into (buffer_push_out, buffer, GST_BUFFER_COPY_FLAGS, 0,
+        -1);
+
+    /* push the buffer and check for any error */
+    ret = gst_pad_push (GST_CE_BASE_ENCODER (video_encoder)->src_pad, buffer_push_out);
+
+    if (GST_FLOW_OK != ret) {
+      GST_ERROR_OBJECT (video_encoder, "Push buffer return with error: %d", ret);
+    }
+  }
+  
   /* unref the original buffer */
   gst_buffer_unref (buffer);
 

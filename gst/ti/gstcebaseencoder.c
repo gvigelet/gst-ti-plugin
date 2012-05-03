@@ -37,9 +37,28 @@ GST_DEBUG_CATEGORY_STATIC (GST_CAT_DEFAULT);
 enum
 {
   PROP_0,
-  PROP_A
 };
 
+
+/* Free any previus definition of the principal attributes */
+gboolean 
+gst_ce_base_encoder_finalize_attributes (GstCEBaseEncoder * base_encoder) {
+  
+  if(base_encoder->submitted_input_buffers != NULL) {
+    GstBuffer *input_buffer = (GstBuffer *)base_encoder->submitted_input_buffers;
+    GstBuffer *output_buffer = (GstBuffer *)base_encoder->submitted_output_buffers;
+    gst_buffer_unref(input_buffer);
+    gst_buffer_unref(output_buffer);
+    base_encoder->submitted_input_buffers = NULL;
+    base_encoder->submitted_output_buffers = NULL;
+  }
+  
+  if(base_encoder->codec_data != NULL) {
+    GstBuffer *codec_data = (GstBuffer *)base_encoder->codec_data;
+    gst_buffer_unref(codec_data);
+    base_encoder->codec_data = NULL;
+  }
+}
 
 /* Free the codec instance in case of no null */
 static gboolean
@@ -77,9 +96,6 @@ gst_ce_base_encoder_default_init_codec (GstCEBaseEncoder *base_encoder)
   /* Create the codec instance */
   if (!gst_ce_base_encoder_create (base_encoder))
     return FALSE;
-
-
-  /* TODO: create buffers, and initialize dynamic params */
 
   return TRUE;
 }
@@ -127,13 +143,12 @@ gst_ce_base_encoder_get_property (GObject * object, guint prop_id,
 }
 
 /* Process the encode algorithm */
-static GstFlowReturn
+static void
 gst_ce_base_encoder_default_encode (GstCEBaseEncoder * base_encoder,
   GstBuffer * raw_data_buffer)
 {
   GST_DEBUG_OBJECT (base_encoder, "Entry");
   
-  int ret;
   GstBuffer *buffer_push_out = NULL;
   GstBuffer *input_buffer;
   GstBuffer *output_buffer;
@@ -158,9 +173,11 @@ gst_ce_base_encoder_default_encode (GstCEBaseEncoder * base_encoder,
   /* Entry only once */
   if (first_buffer == TRUE) {
     
+    /* Give the chance of generate codec data */
     if(base_encoder->codec_data == NULL) {
-      /* Set the codec data and update the caps */
+      /* Process the buffer asynchronously*/
       gst_ce_base_encoder_process_sync(base_encoder, input_buffer, output_buffer); 
+      
       
       /* Prepare the push output buffer */
       VIDENC1_OutArgs outArgs =
@@ -175,6 +192,7 @@ gst_ce_base_encoder_default_encode (GstCEBaseEncoder * base_encoder,
       gst_buffer_fill (buffer_push_out, 0, info_output_buffer.data,
           outArgs.bytesGenerated);
       
+      /* Generate the codec data with the encoded buffer */
       base_encoder->codec_data = gst_ce_base_encoder_generate_codec_data(base_encoder, buffer_push_out);
       
       if(base_encoder->codec_data == NULL){
@@ -184,6 +202,7 @@ gst_ce_base_encoder_default_encode (GstCEBaseEncoder * base_encoder,
       }
       else {
         
+        /* Set the caps with the new codec_data */
         GstCaps* caps = gst_caps_make_writable(gst_pad_get_current_caps (base_encoder->src_pad));
         gst_caps_set_simple (caps, "codec_data", GST_TYPE_BUFFER, base_encoder->codec_data, NULL);
         gboolean ret = gst_pad_set_caps (base_encoder->src_pad, caps);
@@ -194,8 +213,10 @@ gst_ce_base_encoder_default_encode (GstCEBaseEncoder * base_encoder,
       
     }
     else {
+      /************************************************/
+      /* Prepare for init asynchronous encode process */
+      /************************************************/
       
-      g_print("Prepare output and input buffers\n");
       /* Prepare output and input buffers */
       gsize bytes_copied = gst_buffer_fill (input_buffer, 0, info_raw_data.data,
           gst_buffer_get_size (raw_data_buffer));
@@ -204,19 +225,16 @@ gst_ce_base_encoder_default_encode (GstCEBaseEncoder * base_encoder,
             "Can't obtain data from buffer to input buffer");
       }
       
-      g_print("Prepare the arguments for the asynchronous process\n");
       /* Prepare the arguments for the asynchronous process */
       base_encoder->process_async_arguments->base_encoder = base_encoder;
       base_encoder->process_async_arguments->input_buffer = input_buffer;
       base_encoder->process_async_arguments->output_buffer = output_buffer;
       
-      g_print("Prepare the thread for encode and init the process\n");
       /* Prepare the thread for encode and init the process */
       int ret = pthread_create (base_encoder->process_async_thread, NULL,
           CE_BASE_ENCODER_GET_CLASS (base_encoder)->base_encoder_process_async,
           base_encoder->process_async_arguments);
       
-      g_print("After Prepare the thread\n");
       first_buffer = FALSE;
     }
     
@@ -245,7 +263,7 @@ gst_ce_base_encoder_default_encode (GstCEBaseEncoder * base_encoder,
       GST_DEBUG_OBJECT (base_encoder,
           "Can't obtain data from buffer to input buffer");
     }
-    //* Prepare the arguments for the asynchronous process */
+    /* Prepare the arguments for the asynchronous process */
     base_encoder->process_async_arguments->base_encoder = base_encoder;
     base_encoder->process_async_arguments->input_buffer = input_buffer;
     base_encoder->process_async_arguments->output_buffer = output_buffer;
@@ -256,31 +274,11 @@ gst_ce_base_encoder_default_encode (GstCEBaseEncoder * base_encoder,
         base_encoder->process_async_arguments);
 
   }
-
-  if (buffer_push_out == NULL) {
-    /* Only obtain the next buffer */
-    ret = GST_FLOW_OK;
-  } else {
-
-    /* Copy extra data from the original buffer to the push out buffer */
-    gst_buffer_copy_into (buffer_push_out, raw_data_buffer, GST_BUFFER_COPY_META, 0,
-        gst_buffer_get_size (raw_data_buffer));
-    gst_buffer_copy_into (buffer_push_out, raw_data_buffer, GST_BUFFER_COPY_TIMESTAMPS,
-        0, gst_buffer_get_size (raw_data_buffer));
-    gst_buffer_copy_into (buffer_push_out, raw_data_buffer, GST_BUFFER_COPY_FLAGS, 0,
-        -1);
-
-    /*push the buffer and check for any error */
-    ret = gst_pad_push (base_encoder->src_pad, buffer_push_out);
-
-    if (GST_FLOW_OK != ret) {
-      GST_ERROR_OBJECT (base_encoder, "Push buffer return with error: %d", ret);
-    }
-  }
   
+  base_encoder->submitted_push_out_buffers = buffer_push_out;
+
   GST_DEBUG_OBJECT (base_encoder, "Leave");
   
-  return ret;
 
 }
 
@@ -306,10 +304,6 @@ gst_ce_base_encoder_class_init (GstCEBaseEncoderClass * klass)
   gobject_class->get_property = gst_ce_base_encoder_get_property;
   gobject_class->finalize = gst_ce_base_encoder_finalize;
 
-  /* Install properties for the class */
-  g_object_class_install_property (gobject_class, PROP_A,
-      g_param_spec_boolean ("testa", "Test A", "Testing A", FALSE,
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   GST_DEBUG ("LEAVER");
 
@@ -337,6 +331,7 @@ gst_ce_base_encoder_init (GstCEBaseEncoder * base_encoder,
   base_encoder->codec_data = NULL;
   base_encoder->submitted_input_buffers = NULL;
   base_encoder->submitted_output_buffers = NULL;
+  base_encoder->submitted_push_out_buffers = NULL;
   base_encoder->codec_data = NULL;
 
   /* Allocate the thread for the async encode process */

@@ -83,6 +83,9 @@ struct _GstCEBaseEncoder
   
   /* Output buffer of the encoder instance */
   gpointer submitted_output_buffers;
+  
+  /* Push out buffer of the encoder instance */
+  gpointer submitted_push_out_buffers;
    
   /* Input arguments for the encoder instance */
   gpointer submitted_input_arguments;
@@ -113,7 +116,7 @@ struct _GstCEBaseEncoderClass
     gpointer input_buffer, gpointer output_buffer);
   gboolean (*base_encoder_process_async) (processAsyncArguments * arguments);
   gpointer (*base_encoder_generate_codec_data) (gpointer push_out_buffer);
-  gpointer (*base_encoder_encode) (GstCEBaseEncoder * base_encoder, gpointer raw_data_buffer);
+  void (*base_encoder_encode) (GstCEBaseEncoder * base_encoder, gpointer raw_data_buffer);
   gboolean (*base_encoder_init_codec) (GstCEBaseEncoder * base_encoder);
   gboolean (*base_encoder_finalize_codec) (GstCEBaseEncoder * base_encoder);
 };
@@ -261,6 +264,9 @@ GstBuffer *gst_ce_base_encoder_get_output_buffer (GstCEBaseEncoder *
 void gst_ce_base_encoder_shrink_output_buffer (GstCEBaseEncoder * base_encoder,
     GstBuffer * buffer, gsize new_size);
 
+
+gboolean 
+gst_ce_base_encoder_finalize_attributes (GstCEBaseEncoder * base_encoder);
 
 G_END_DECLS
 #endif

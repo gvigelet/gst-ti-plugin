@@ -101,6 +101,9 @@ struct _GstCEBaseEncoder
   
   /* Codec data for the encode */
   gpointer codec_data;
+  
+  /* Mark of async process is active */
+  gboolean process_async_active;
 
 };
 
@@ -116,7 +119,7 @@ struct _GstCEBaseEncoderClass
     gpointer input_buffer, gpointer output_buffer);
   gboolean (*base_encoder_process_async) (processAsyncArguments * arguments);
   gpointer (*base_encoder_generate_codec_data) (gpointer push_out_buffer);
-  void (*base_encoder_encode) (GstCEBaseEncoder * base_encoder, gpointer raw_data_buffer);
+  gpointer (*base_encoder_encode) (GstCEBaseEncoder * base_encoder);
   gboolean (*base_encoder_init_codec) (GstCEBaseEncoder * base_encoder);
   gboolean (*base_encoder_finalize_codec) (GstCEBaseEncoder * base_encoder);
 };
@@ -168,8 +171,8 @@ GType gst_ce_base_encoder_get_type (void);
  * @param base_encoder a pointer to a _GstCEBaseEncoder object
  * @param size the size of the buffer
  */
-#define gst_ce_base_encoder_encode(obj, raw_data_buf) \
-  CE_BASE_ENCODER_GET_CLASS(obj)->base_encoder_encode(obj, raw_data_buf)
+#define gst_ce_base_encoder_encode(obj) \
+  CE_BASE_ENCODER_GET_CLASS(obj)->base_encoder_encode(obj)
 
 
 /*--------------------*/

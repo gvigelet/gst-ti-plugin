@@ -25,6 +25,7 @@
 #include <ti/sdo/ce/Engine.h>
 #include <ti/sdo/ce/video1/videnc1.h>
 #include <gstcmemallocator.h>
+#include <string.h>
 
 #define GST_CAT_DEFAULT gst_ce_base_video_encoder_debug
 GST_DEBUG_CATEGORY_STATIC (GST_CAT_DEFAULT);
@@ -251,18 +252,38 @@ gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
   GstBuffer *buffer_in;
   GstBuffer *buffer_out;
   GstBuffer *buffer_push_out;
+  gboolean input_buffer_copied = FALSE;
+  GstAllocator *buffer_allocator = NULL;
 
   start = gst_util_get_timestamp ();
+    
   
-  /* Check if the buffers were set */
+  /* Access the data from the entry buffer */
+  if (!gst_buffer_map (buffer, &info_buffer, GST_MAP_WRITE)) {
+    GST_WARNING_OBJECT (video_encoder, "Can't access data from buffer");
+  }
+  
+  
+  if(gst_buffer_n_memory(buffer) > 0) {
+    GstMemory *buffer_mem = info_buffer.memory;
+    GstAllocator *allocator = buffer_mem->allocator;
+    
+    /* Check if the memory of th entry buffer is contiguos memory */
+    if(strcmp(gst_allocator_get_memory_type(allocator), GST_ALLOCATOR_CMEM) == 0) {
+      GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers = buffer;
+      input_buffer_copied = TRUE;
+    }
+  }
+  
+  /* Check for the input_buffer */
   if (GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers == NULL) {
-
-    /* Config the input and output buffer */
-    GstAllocator *buffer_allocator = gst_allocator_find ("ContiguosMemory");
+      
+    /* Obtain the allocator for the new buffer */
+    buffer_allocator = gst_allocator_find ("ContiguosMemory");
     if (buffer_allocator == NULL) {
       GST_DEBUG_OBJECT (video_encoder, "Can't find the buffer allocator");
     }
-
+    
     /* Allocate the input buffer with alignment of 4 bytes and with default buffer size */
     GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers =
         gst_buffer_new_allocate (buffer_allocator, gst_buffer_get_size (buffer),
@@ -272,7 +293,20 @@ gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
       GST_DEBUG_OBJECT (video_encoder,
           "Memory couldn't be allocated for input buffer");
     }
-
+  }
+  
+  /* Check for the output_buffer */
+  if(GST_CE_BASE_ENCODER (video_encoder)->submitted_output_buffers == NULL) {
+    
+    if(buffer_allocator == NULL) {
+      /* Obtain the allocator for the new buffer */
+      buffer_allocator = gst_allocator_find ("ContiguosMemory");
+      if (buffer_allocator == NULL) {
+        GST_DEBUG_OBJECT (video_encoder, "Can't find the buffer allocator");
+      }
+    }
+    
+    
     /* Allocate the output buffer with alignment of 4 bytes */
     GST_CE_BASE_ENCODER (video_encoder)->submitted_output_buffers =
         gst_buffer_new_allocate (buffer_allocator, gst_buffer_get_size (buffer),
@@ -281,13 +315,17 @@ gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
       GST_DEBUG_OBJECT (video_encoder,
           "Memory couldn't be allocated for output buffer");
     }
+    
   }
-
-  /* Encode the actual buffer */
-  gst_ce_base_encoder_encode (GST_CE_BASE_ENCODER (video_encoder),
-    buffer);
   
-  buffer_push_out = (GstBuffer *)(GST_CE_BASE_ENCODER (video_encoder)->submitted_push_out_buffers);
+  /* Check for copied the entry buffer */
+  if(input_buffer_copied == FALSE) {  
+    gst_buffer_fill (GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers, 
+      0, info_buffer.data, gst_buffer_get_size(buffer));
+  }
+  
+  /* Encode the actual buffer */
+  buffer_push_out = gst_ce_base_encoder_encode (GST_CE_BASE_ENCODER (video_encoder));
   
   if (buffer_push_out == NULL) {
     /* Only obtain the next buffer */

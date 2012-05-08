@@ -27,7 +27,6 @@
 
 GST_DEBUG_CATEGORY_STATIC (cmem);
 #define GST_CAT_DEFAULT cmem
-//#define MAX_BUF_SIZE 9999999
 
 static GstAllocator *_cmem_allocator;
 

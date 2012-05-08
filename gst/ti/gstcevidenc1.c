@@ -279,12 +279,14 @@ gboolean
 gst_ce_videnc1_implement_process_async (processAsyncArguments * arguments)
 {
 
-
+  
   /* Obtain the arguments */
   GstCEBaseEncoder *base_encoder = (GstCEBaseEncoder * )arguments->base_encoder;
   GstBuffer *input_buffer = (GstBuffer *)arguments->input_buffer;
   GstBuffer *output_buffer = (GstBuffer *)arguments->output_buffer;
 
+  GST_DEBUG_OBJECT (GST_CE_VIDENC1(base_encoder), "Enter implement_process_async base video encoder");
+  
   IVIDEO1_BufDescIn inBufDesc;
   XDM_BufDesc outBufDesc;
   VIDENC1_InArgs *inArgs;
@@ -305,7 +307,11 @@ gst_ce_videnc1_implement_process_async (processAsyncArguments * arguments)
   if (!gst_buffer_map (output_buffer, &info_out, GST_MAP_WRITE)) {
     GST_DEBUG_OBJECT (base_encoder, "Can't access data from output buffer");
   }
-
+  
+  GstMemory *buffer_mem = info_in.memory;
+  GstAllocator *allocator = buffer_mem->allocator; 
+  
+  
   /* Prepare the input buffer descriptor for the encode process */
   inBufDesc.frameWidth =
       GST_VIDEO_INFO_WIDTH (&GST_CE_BASE_VIDEO_ENCODER (base_encoder)->
@@ -342,7 +348,7 @@ gst_ce_videnc1_implement_process_async (processAsyncArguments * arguments)
   status =
       VIDENC1_process (base_encoder->codec_handle, &inBufDesc, &outBufDesc,
       inArgs, outArgs);
-
+  
   if (status != VIDENC1_EOK) {
 
     GST_WARNING_OBJECT (base_encoder,
@@ -350,7 +356,9 @@ gst_ce_videnc1_implement_process_async (processAsyncArguments * arguments)
         (unsigned int) outArgs->extendedError);
     return FALSE;
   }
-
+  
+  GST_DEBUG_OBJECT (GST_CE_VIDENC1(base_encoder), "Leave implement_process_async base video encoder");
+  
   return TRUE;
 }
 

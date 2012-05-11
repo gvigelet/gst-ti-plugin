@@ -54,8 +54,8 @@ struct _GstCEH264Encoder
 struct _GstCEH264EncoderClass
 {
   GstCEVIDENC1Class parent_class;
-  gboolean (*h264_encoder_fixate_src_caps) (GstCEBaseVideoEncoder * base_video_encoder,
-    GstCaps * filter);
+  GstBuffer* (*h264_encoder_pre_process) (GstCEBaseEncoder * base_encoder, GstBuffer *buffer);
+  
 };
 
 /* Macros that allow access to the methods of the class */
@@ -64,16 +64,18 @@ struct _GstCEH264EncoderClass
 /* Public methods ***/
 /*-------------------*/
 
-#define gst_ce_h264_encoder_fixate_src_caps(obj, filter) \
-  CE_H264_ENCODER_GET_CLASS(GST_CE_H264_ENCODER(obj))->h264_encoder_fixate_src_caps(obj, filter)
+#define gst_ce_h264_encoder_pre_process(obj, buf) \
+  CE_H264_ENCODER_GET_CLASS(GST_CE_H264_ENCODER(obj))->h264_encoder_pre_process(obj, buf)
+
 
 /* Auxiliar functions for the class
  * Work similar to public methods  */
 
-GstBuffer *gst_ce_h264_encoder_generate_codec_data (GstCEBaseEncoder * base_encoder,
-    GstBuffer * input_buffer, GstBuffer * output_buffer);
 
 GType gst_ce_h264_encoder_get_type (void);
+
+GstCaps* gst_ce_h264_encoder_fixate_src_caps(GstCEBaseVideoEncoder * base_video_encoder,
+  GstCaps * filter);
 
 
 G_END_DECLS

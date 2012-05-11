@@ -94,49 +94,54 @@ gst_ce_mpeg4_encoder_get_property (GObject * object, guint prop_id,
   }
 }
 
-static GstBuffer*
-gst_ce_mpeg4_encoder_implement_generate_codec_data (GstBuffer *buffer){
-    
-    guchar *data;
-    gint i;
-    GstBuffer *codec_data = NULL;
-    
-    GstMapInfo info_buffer;
-    if (!gst_buffer_map (buffer, &info_buffer, GST_MAP_WRITE)) {
-      GST_DEBUG ("Can't access data from buffer");
-    }
-    
-    data = info_buffer.data;
-    
-    /* Search the object layer start code */
-    for (i = 0; i < gst_buffer_get_size(buffer) - 4; ++i) {
-        if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1 && 
-            data[i + 3] == 0x20) {
-                break;
-        }
-    }
-    i++;
-    /* Search next start code */
-    for (; i < gst_buffer_get_size(buffer) - 4; ++i) {
-        if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1) {
-                break;
-        }
-    }
+GstBuffer *
+gst_ce_mpeg4_encoder_generate_codec_data (GstBuffer * buffer)
+{
 
-    if ((i != (gst_buffer_get_size(buffer) - 4)) &&
-        (i != 0)) {
-        /* We found a codec data */
-        codec_data = gst_buffer_new_and_alloc(i);
-        gst_buffer_fill (codec_data, 0, data, i);
+  guchar *data;
+  gint i;
+  GstBuffer *codec_data = NULL;
+
+  GstMapInfo info_buffer;
+  if (!gst_buffer_map (buffer, &info_buffer, GST_MAP_WRITE)) {
+    GST_DEBUG ("Can't access data from buffer");
+  }
+
+  data = info_buffer.data;
+
+  /* Search the object layer start code */
+  for (i = 0; i < gst_buffer_get_size (buffer) - 4; ++i) {
+    if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1 &&
+        data[i + 3] == 0x20) {
+      break;
     }
-    return codec_data;
+  }
+  i++;
+  /* Search next start code */
+  for (; i < gst_buffer_get_size (buffer) - 4; ++i) {
+    if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1) {
+      break;
+    }
+  }
+
+  if ((i != (gst_buffer_get_size (buffer) - 4)) && (i != 0)) {
+    /* We found a codec data */
+    codec_data = gst_buffer_new_and_alloc (i);
+    gst_buffer_fill (codec_data, 0, data, i);
+  }
+
+  if (codec_data == NULL) {
+    GST_WARNING ("Problems with generate codec data");
+  }
+
+  return codec_data;
 }
 
 /* Implementation of fix_src_caps depending of template src caps 
  * and src_peer caps */
-static gboolean
-gst_ce_mpeg4_encoder_implement_fixate_src_caps (GstCEBaseVideoEncoder * base_video_encoder,
-    GstCaps * filter)
+GstCaps *
+gst_ce_mpeg4_encoder_fixate_src_caps (GstCEBaseVideoEncoder *
+    base_video_encoder, GstCaps * filter)
 {
 
   GstCEBaseEncoder *base_encoder = GST_CE_BASE_ENCODER (base_video_encoder);
@@ -154,7 +159,6 @@ gst_ce_mpeg4_encoder_implement_fixate_src_caps (GstCEBaseVideoEncoder * base_vid
   GstStructure *actual_structure;
   const gchar *stream_format;
   const gchar *alignment;
-  gboolean ret;
 
   GST_DEBUG_OBJECT (mpeg4_encoder, "Enter fixate_src_caps mpeg4 encoder");
 
@@ -181,9 +185,9 @@ gst_ce_mpeg4_encoder_implement_fixate_src_caps (GstCEBaseVideoEncoder * base_vid
   structure = gst_caps_get_structure (caps, 0);
   if (structure == NULL) {
     GST_ERROR_OBJECT (base_video_encoder, "Failed to get src caps structure");
-    return FALSE;
+    return NULL;
   }
- 
+
   /* Set the width, height and framerate */
   gst_structure_set (structure, "width", G_TYPE_INT,
       GST_VIDEO_INFO_WIDTH (&video_encoder->video_info), NULL);
@@ -193,14 +197,8 @@ gst_ce_mpeg4_encoder_implement_fixate_src_caps (GstCEBaseVideoEncoder * base_vid
       GST_VIDEO_INFO_FPS_N (&video_encoder->video_info),
       GST_VIDEO_INFO_FPS_D (&video_encoder->video_info), NULL);
 
-  /* Set the src caps and check for errors */
-  ret = gst_pad_set_caps (base_encoder->src_pad, caps);
-  if (ret == FALSE) {
-    GST_WARNING_OBJECT (mpeg4_encoder, "Caps can't be set", ret);
-  }
-
   GST_DEBUG_OBJECT (mpeg4_encoder, "Leave fixate_src_caps mpeg4 encoder");
-  return ret;
+  return caps;
 
 }
 
@@ -256,6 +254,46 @@ gst_ce_mpeg4_encoder_init (GstCEMPEG4Encoder * mpeg4_encoder)
 
 }
 
+/* Function that override the post process method of the base class */
+static GstBuffer *
+gst_ce_mpeg4_encoder_override_post_process (GstCEBaseEncoder * base_encoder,
+    GstBuffer * buffer)
+{
+
+  GstBuffer *codec_data;
+  GstCaps *caps;
+  gboolean set_caps_ret;
+
+  if (base_encoder->first_buffer == FALSE) {
+    /* fixate the caps */
+    caps =
+        gst_ce_mpeg4_encoder_fixate_src_caps (GST_CE_BASE_VIDEO_ENCODER
+        (base_encoder), base_encoder->suggest_caps);
+    if (caps == NULL) {
+      GST_WARNING_OBJECT (GST_CE_MPEG4_ENCODER (base_encoder),
+          "Problems for fixate the caps");
+    }
+
+    /* Generate the codec data */
+    codec_data = gst_ce_mpeg4_encoder_generate_codec_data (buffer);
+
+    /* Update the caps with the codec data */
+    gst_caps_set_simple (caps, "codec_data", GST_TYPE_BUFFER, codec_data, NULL);
+    set_caps_ret = gst_pad_set_caps (base_encoder->src_pad, caps);
+    if (set_caps_ret == FALSE) {
+      GST_WARNING_OBJECT (GST_CE_MPEG4_ENCODER (base_encoder),
+          "Caps can't be set");
+    }
+    gst_buffer_unref (codec_data);
+
+
+    base_encoder->first_buffer = TRUE;
+  }
+
+  /* don't modify the buffer */
+  return buffer;
+}
+
 /* class_init of the class */
 static void
 gst_ce_mpeg4_encoder_class_init (GstCEMPEG4EncoderClass * klass)
@@ -273,15 +311,14 @@ gst_ce_mpeg4_encoder_class_init (GstCEMPEG4EncoderClass * klass)
       "CodecEngine mpeg4 encoder");
 
   GST_DEBUG ("ENTER");
-  
+
   /* Instance the class methods */
-  klass->mpeg4_encoder_generate_codec_data = gst_ce_mpeg4_encoder_implement_generate_codec_data;
-  klass->mpeg4_encoder_fixate_src_caps = gst_ce_mpeg4_encoder_implement_fixate_src_caps;
-  
+  klass->mpeg4_encoder_post_process =
+      gst_ce_mpeg4_encoder_override_post_process;
+
   /* Override of heredity functions */
-  base_encoder_class->base_encoder_generate_codec_data =
-    GST_DEBUG_FUNCPTR (klass->mpeg4_encoder_generate_codec_data);
-  video_encoder_class->video_encoder_fixate_src_caps = klass->mpeg4_encoder_fixate_src_caps;
+  base_encoder_class->base_encoder_post_process =
+      klass->mpeg4_encoder_post_process;
   gobject_class->set_property = gst_ce_mpeg4_encoder_set_property;
   gobject_class->get_property = gst_ce_mpeg4_encoder_get_property;
 
@@ -291,12 +328,12 @@ gst_ce_mpeg4_encoder_class_init (GstCEMPEG4EncoderClass * klass)
       gst_static_pad_template_get (&gst_ce_mpeg4_encoder_sink_factory));
 
   /*g_object_class_install_property (gobject_class, PROP_SINGLE_NAL,
-      g_param_spec_boolean ("single-nal", "Single NAL optimization",
-          "Assume encoder generates single NAL units per frame encoded to optimize avc stream generation",
-          FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));*/
+     g_param_spec_boolean ("single-nal", "Single NAL optimization",
+     "Assume encoder generates single NAL units per frame encoded to optimize avc stream generation",
+     FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)); */
 
-  
-  
+
+
   GST_DEBUG ("LEAVE");
 }
 

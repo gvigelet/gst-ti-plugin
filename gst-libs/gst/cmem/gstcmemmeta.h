@@ -28,6 +28,8 @@
 #include <ti/sdo/ce/osal/Memory.h>
 
 G_BEGIN_DECLS
+
+#define GST_CMEM_META "GstCMEMMeta"
 /** 
  * Contiguous memory (CMEM) metadata
  *
@@ -35,7 +37,7 @@ G_BEGIN_DECLS
  * sense that they can be shared with hardware subsystems that does not 
  * support MMU).
  */
-    struct _GstCMEMMeta
+struct _GstCMEMMeta
 {
   GstMeta meta;
 
@@ -45,8 +47,8 @@ G_BEGIN_DECLS
 
 typedef struct _GstCMEMMeta GstCMEMMeta;
 
-const GstMetaInfo *gst_cmem_meta_get_info (void);
-#define GST_CMEM_META_INFO (gst_cmem_meta_get_info())
+const GstMetaInfo *gst_cmem_meta_register (void);
+#define GST_CMEM_META_REGISTER (gst_cmem_meta_register())
 
 #define gst_buffer_get_cmem_meta(b) \
   ((GstCMEMMeta*)gst_buffer_get_meta((b),GST_CMEM_META_INFO))
@@ -68,6 +70,10 @@ gpointer gst_buffer_get_cmem_physical_address (GstBuffer * buffer);
  * @related _GstCMEMMeta
  */
 void gst_buffer_set_cmem_physical_address (GstBuffer * buffer, gpointer paddr);
+
+
+const GstMetaInfo* gst_cmem_meta_get_info();
+
 
 G_END_DECLS
 #endif

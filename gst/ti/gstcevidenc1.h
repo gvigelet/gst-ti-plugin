@@ -59,10 +59,10 @@ struct _GstCEVIDENC1Class
   gboolean (*videnc1_control) (GstCEBaseEncoder * base_encoder, gint cmd_id);
   gboolean (*videnc1_delete) (GstCEBaseEncoder * base_encoder);
   gboolean (*videnc1_create) (GstCEBaseEncoder * base_encoder);
-  gboolean (*videnc1_process_sync) (GstCEBaseEncoder * base_encoder,
+  GstBuffer* (*videnc1_process_sync) (GstCEBaseEncoder * base_encoder,
     gpointer input_buffer, gpointer output_buffer);
-  gboolean (*videnc1_process_async) (processAsyncArguments * arguments);
   gboolean (*videnc1_alloc_params) (GstCEBaseEncoder * base_encoder);
+  GstBuffer* (*videnc1_generate_header) (GstCEVIDENC1 * videnc1_encoder);
 
 };
 /* Macros that allow access to the method of the class */
@@ -71,7 +71,9 @@ struct _GstCEVIDENC1Class
 /* Public methods */
 /*-------------------*/
 
-
+#define gst_ce_videnc1_generate_header(obj) \
+  CE_VIDENC1_GET_CLASS(obj)->videnc1_generate_header(obj)
+  
 #define gst_ce_videnc1_initialize_params(obj) \
   CE_VIDENC1_GET_CLASS(obj)->videnc1_initialize_params(obj)
   
@@ -87,9 +89,6 @@ struct _GstCEVIDENC1Class
 #define gst_ce_videnc1_process_sync(obj, in_buf, out_buf) \
   CE_VIDENC1_GET_CLASS(obj)->videnc1_process_sync(obj, in_buf, out_buf)
 
-#define gst_ce_videnc1_process_async(obj, arg) \
-  CE_VIDENC1_GET_CLASS(obj)->videnc1_process_async(arg)
-  
 #define gst_ce_videnc1_alloc_params(obj) \
   CE_VIDENC1_GET_CLASS(obj)->videnc1_alloc_params(obj)
 

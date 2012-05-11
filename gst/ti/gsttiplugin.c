@@ -38,11 +38,16 @@ TIPlugin_init (GstPlugin * plugin)
   gboolean ret;
   GST_DEBUG_CATEGORY_INIT (tiplugin, "ti", 0,
       "TI plugin for CodecEngine debugging");
+
+  /* Init the CMEM allocator */
   gst_cmem_allocator_initialize ();
+
+  /* Init the CMEM meta data */
+  gst_cmem_meta_register ();
 
   /* Initialize the codec engine run time */
   CERuntime_init ();
-  
+
   /* Register the encoders */
   ret =
       gst_element_register (plugin, "ceenc_h264", GST_RANK_PRIMARY,
@@ -50,7 +55,7 @@ TIPlugin_init (GstPlugin * plugin)
   if (!ret) {
     g_warning ("Failed to register h264 encoder element");
   }
-  
+
   ret =
       gst_element_register (plugin, "ceenc_mpeg4", GST_RANK_PRIMARY,
       GST_TYPE_CE_MPEG4_ENCODER);

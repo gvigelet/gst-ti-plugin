@@ -41,23 +41,22 @@ enum
 
 
 /* Free any previus definition of the principal attributes */
-gboolean 
-gst_ce_base_encoder_finalize_attributes (GstCEBaseEncoder * base_encoder) {
-  
-  if(base_encoder->submitted_input_buffers != NULL) {
-    GstBuffer *input_buffer = (GstBuffer *)base_encoder->submitted_input_buffers;
-    GstBuffer *output_buffer = (GstBuffer *)base_encoder->submitted_output_buffers;
-    gst_buffer_unref(input_buffer);
-    gst_buffer_unref(output_buffer);
+gboolean
+gst_ce_base_encoder_finalize_attributes (GstCEBaseEncoder * base_encoder)
+{
+
+  if (base_encoder->submitted_input_buffers != NULL) {
+    GstBuffer *input_buffer =
+        (GstBuffer *) base_encoder->submitted_input_buffers;
+    GstBuffer *output_buffer =
+        (GstBuffer *) base_encoder->submitted_output_buffers;
+    gst_buffer_unref (input_buffer);
+    gst_buffer_unref (output_buffer);
     base_encoder->submitted_input_buffers = NULL;
     base_encoder->submitted_output_buffers = NULL;
   }
-  
-  if(base_encoder->codec_data != NULL) {
-    GstBuffer *codec_data = (GstBuffer *)base_encoder->codec_data;
-    gst_buffer_unref(codec_data);
-    base_encoder->codec_data = NULL;
-  }
+
+  base_encoder->first_buffer = FALSE;
 }
 
 /* Free the codec instance in case of no null */
@@ -75,7 +74,7 @@ gst_ce_base_encoder_default_finalize_codec (GstCEBaseEncoder * base_encoder)
 
 /* Check for a previews instance of the codec, init the params and create the codec instance */
 static gboolean
-gst_ce_base_encoder_default_init_codec (GstCEBaseEncoder *base_encoder)
+gst_ce_base_encoder_default_init_codec (GstCEBaseEncoder * base_encoder)
 {
 
   /* Finalize any previous configuration  */
@@ -141,104 +140,78 @@ gst_ce_base_encoder_get_property (GObject * object, guint prop_id,
   }
 }
 
+/* Default implementation of the method that add meta data 
+ * to the buffer */
+static void
+gst_ce_base_encoder_default_buffer_add_meta (GstBuffer * buffer)
+{
+
+  GstMapInfo info_buffer;
+
+  GstMetaInfo *cmem_buffer_meta_info = gst_cmem_meta_get_info ();
+  GstCMEMMeta *cmem_buffer_meta = (GstCMEMMeta *) gst_buffer_add_meta (buffer,
+      cmem_buffer_meta_info, NULL);
+
+  /* Access the info of the buffer for obtain the  physical address */
+  if (!gst_buffer_map (buffer, &info_buffer, GST_MAP_WRITE)) {
+    GST_WARNING ("Can't access data from buffer");
+  }
+
+  cmem_buffer_meta->physical_address =
+      Memory_getBufferPhysicalAddress (info_buffer.data,
+      gst_buffer_get_size (buffer), NULL);
+
+  if (cmem_buffer_meta->physical_address == 0) {
+    GST_WARNING ("Physical address could not be obtained.");
+  }
+
+}
+
+static GstBuffer *
+gst_ce_base_encoder_default_post_process (GstCEBaseEncoder * base_encoder,
+    GstBuffer * buffer)
+{
+  return buffer;
+}
+
+static GstBuffer *
+gst_ce_base_encoder_default_pre_process (GstCEBaseEncoder * base_encoder,
+    GstBuffer * buffer)
+{
+  return buffer;
+}
+
 /* Process the encode algorithm */
-static GstBuffer*
+static GstBuffer *
 gst_ce_base_encoder_default_encode (GstCEBaseEncoder * base_encoder)
 {
   GST_DEBUG_OBJECT (base_encoder, "Entry");
-  
-  GstBuffer *buffer_push_out = NULL;
+
+  GstBuffer *encoded_buffer = NULL;
   GstBuffer *input_buffer;
   GstBuffer *output_buffer;
-  pthread_t processAsyncthread;
-  gboolean processAsyncReturn;
-  GstMapInfo info_output_buffer;
-  
+  GstBuffer *push_out_buffer;
+
   /* Reuse the input and output buffers */
-  input_buffer =
-      (GstBuffer *)base_encoder->submitted_input_buffers;
-  output_buffer =
-      (GstBuffer *) base_encoder->submitted_output_buffers;
-  
-  
-  
-  /* Give the chance of generate codec data */
-  if((base_encoder->codec_data == NULL)  && 
-     (CE_BASE_ENCODER_GET_CLASS(base_encoder)->base_encoder_generate_codec_data != NULL)) {
-    
-    /* Process the buffer synchronously*/
-    gst_ce_base_encoder_process_sync(base_encoder, input_buffer, output_buffer); 
-      
-    /* Prepare the push output buffer */
-    VIDENC1_OutArgs outArgs =
-      *((VIDENC1_OutArgs *) base_encoder->submitted_output_arguments);
-      
-    buffer_push_out = gst_buffer_new_and_alloc (outArgs.bytesGenerated);
-      
-    if (!gst_buffer_map (output_buffer, &info_output_buffer, GST_MAP_WRITE)) {
-      GST_DEBUG_OBJECT (base_encoder, "Can't access data from output buffer");
-    }
-      
-    gst_buffer_fill (buffer_push_out, 0, info_output_buffer.data,
-      outArgs.bytesGenerated);
-      
-    /* Generate the codec data with the encoded buffer */
-    base_encoder->codec_data = gst_ce_base_encoder_generate_codec_data(base_encoder, buffer_push_out);
-      
-    if(base_encoder->codec_data == NULL){
-      GST_ERROR_OBJECT (base_encoder,
-        "Can't obtain codec data");
-      /* Force to dont re-entry */
-      CE_BASE_ENCODER_GET_CLASS(base_encoder)->base_encoder_generate_codec_data = NULL;
-    }
-    else {
-      /* Update the caps with the new codec_data */
-      GstCaps* caps = gst_caps_make_writable(gst_pad_get_current_caps (base_encoder->src_pad));
-      gst_caps_set_simple (caps, "codec_data", GST_TYPE_BUFFER, base_encoder->codec_data, NULL);
-      gboolean ret = gst_pad_set_caps (base_encoder->src_pad, caps);
-      if (ret == FALSE) {
-        GST_WARNING_OBJECT (base_encoder, "Caps can't be set", ret);
-      }        
-    }
-  }
-  else {
-    if(base_encoder->process_async_active == TRUE) {
-      /* Await for previus call of processAsync */
-      pthread_join (*(base_encoder->process_async_thread), NULL);
+  input_buffer = (GstBuffer *) base_encoder->submitted_input_buffers;
+  output_buffer = (GstBuffer *) base_encoder->submitted_output_buffers;
 
-      /* Prepare the push output buffer */
-      VIDENC1_OutArgs outArgs =
-          *((VIDENC1_OutArgs *) base_encoder->submitted_output_arguments);
-        
-      buffer_push_out = gst_buffer_new_and_alloc (outArgs.bytesGenerated);
-      
-      if (!gst_buffer_map (output_buffer, &info_output_buffer, GST_MAP_WRITE)) {
-         GST_DEBUG_OBJECT (base_encoder, "Can't access data from output buffer");
-      }
-      
-      gst_buffer_fill (buffer_push_out, 0, info_output_buffer.data,
-        outArgs.bytesGenerated);
-    }
-    
-    /* Prepare the arguments for the asynchronous process */
-    base_encoder->process_async_arguments->base_encoder = base_encoder;
-    base_encoder->process_async_arguments->input_buffer = input_buffer;
-    base_encoder->process_async_arguments->output_buffer = output_buffer;
 
-    /* Prepare the thread for encode and init the process asynchronously */
-    int ret = pthread_create (base_encoder->process_async_thread, NULL,
-        CE_BASE_ENCODER_GET_CLASS (base_encoder)->base_encoder_process_async,
-        base_encoder->process_async_arguments);
-    
-    /* Mark process asynchronously active */
-    base_encoder->process_async_active = TRUE;
-    
-  }
-  
+  /* Give the chance of transform the buffer before being encode */
+  input_buffer = gst_ce_base_encoder_pre_process (base_encoder, input_buffer);
+
+  /* Encode the buffer */
+  encoded_buffer =
+      gst_ce_base_encoder_process_sync (base_encoder, input_buffer,
+      output_buffer);
+
+  /* Permit to transform encode buffer before push out */
+  push_out_buffer =
+      gst_ce_base_encoder_post_process (base_encoder, output_buffer);
+
   GST_DEBUG_OBJECT (base_encoder, "Leave");
-  
-  /* Safe the push out buffer */
-  return buffer_push_out;
+
+  return encoded_buffer;
 
 }
 
@@ -253,12 +226,17 @@ gst_ce_base_encoder_class_init (GstCEBaseEncoderClass * klass)
       "CodecEngine base encoder class");
 
   GST_DEBUG ("ENTER");
-  
+
   /* Instance the class methods */
   klass->base_encoder_encode = gst_ce_base_encoder_default_encode;
-  klass->base_encoder_finalize_codec = gst_ce_base_encoder_default_finalize_codec;
+  klass->base_encoder_finalize_codec =
+      gst_ce_base_encoder_default_finalize_codec;
   klass->base_encoder_init_codec = gst_ce_base_encoder_default_init_codec;
-  
+  klass->base_encoder_buffer_add_meta =
+      gst_ce_base_encoder_default_buffer_add_meta;
+  klass->base_encoder_post_process = gst_ce_base_encoder_default_post_process;
+  klass->base_encoder_pre_process = gst_ce_base_encoder_default_pre_process;
+
   /* Override inheritance methods */
   gobject_class->set_property = gst_ce_base_encoder_set_property;
   gobject_class->get_property = gst_ce_base_encoder_get_property;
@@ -288,18 +266,10 @@ gst_ce_base_encoder_init (GstCEBaseEncoder * base_encoder,
   base_encoder->submitted_input_arguments = g_malloc0 (sizeof (VIDENC1_InArgs));
   base_encoder->submitted_output_arguments =
       g_malloc0 (sizeof (VIDENC1_OutArgs));
-  base_encoder->codec_data = NULL;
   base_encoder->submitted_input_buffers = NULL;
   base_encoder->submitted_output_buffers = NULL;
   base_encoder->submitted_push_out_buffers = NULL;
-  base_encoder->codec_data = NULL;
-  base_encoder->process_async_active = FALSE;
-
-  /* Allocate the thread for the async encode process */
-  base_encoder->process_async_thread = g_malloc0 (sizeof (pthread_t));
-
-  /* Allocate the arguments for the async encode process */
-  base_encoder->process_async_arguments = g_malloc0 (sizeof (processAsyncArguments));
+  base_encoder->first_buffer = FALSE;
 
   GST_DEBUG_OBJECT (base_encoder, "Leave _init base encoder");
 
@@ -340,10 +310,30 @@ gst_ce_base_encoder_get_type (void)
  *  @return a #GstBuffer 
  */
 GstBuffer *
-gst_ce_base_encoder_get_output_buffer (GstCEBaseEncoder * base_encoder,
+gst_ce_base_encoder_get_cmem_buffer (GstCEBaseEncoder * base_encoder,
     gsize size)
 {
-  return NULL;
+  GstBuffer *buffer = NULL;
+  GstAllocator *buffer_allocator;
+
+  /* Obtain the allocator for the new buffer */
+  buffer_allocator = gst_allocator_find ("ContiguosMemory");
+  if (buffer_allocator == NULL) {
+    GST_DEBUG_OBJECT (base_encoder, "Can't find the buffer allocator");
+  }
+
+  /* Allocate the input buffer with alignment of 4 bytes and with default buffer size */
+  buffer = gst_buffer_new_allocate (buffer_allocator, size, 3);
+
+  if (buffer == NULL) {
+    GST_DEBUG_OBJECT (base_encoder,
+        "Memory couldn't be allocated for input buffer");
+  }
+
+  /* Add meta data to the buffer */
+  gst_ce_base_encoder_buffer_add_meta (base_encoder, buffer);
+
+  return buffer;
 }
 
 /* Reconfig the output buffer size of the encoder */
@@ -352,5 +342,3 @@ gst_ce_base_encoder_shrink_output_buffer (GstCEBaseEncoder * base_encoder,
     GstBuffer * buffer, gsize new_size)
 {
 }
-
-

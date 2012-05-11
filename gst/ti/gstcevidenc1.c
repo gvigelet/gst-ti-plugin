@@ -129,16 +129,19 @@ gst_ce_videnc1_implement_initialize_params (GstCEBaseEncoder * base_encoder)
   dynamic_params->captureWidth =
       GST_VIDEO_INFO_PLANE_STRIDE (&video_encoder->video_info, 0);
 
-  params->maxFrameRate = GST_VIDEO_INFO_FPS_N (&video_encoder->video_info) * 1000;
+  params->maxFrameRate =
+      GST_VIDEO_INFO_FPS_N (&video_encoder->video_info) * 1000;
 
   dynamic_params->refFrameRate = params->maxFrameRate;
   dynamic_params->targetFrameRate = params->maxFrameRate;
 
-  params->inputChromaFormat = gst_ce_video_utils_gst_video_info_to_xdm_chroma_format(
-    GST_VIDEO_INFO_FORMAT(&video_encoder->video_info));    
+  params->inputChromaFormat =
+      gst_ce_video_utils_gst_video_info_to_xdm_chroma_format
+      (GST_VIDEO_INFO_FORMAT (&video_encoder->video_info));
   params->reconChromaFormat = params->inputChromaFormat;
-  params->inputContentType = gst_ce_video_utils_gst_video_info_to_xdm_content_type(
-    GST_VIDEO_INFO_FORMAT(&video_encoder->video_info));
+  params->inputContentType =
+      gst_ce_video_utils_gst_video_info_to_xdm_content_type
+      (GST_VIDEO_INFO_FORMAT (&video_encoder->video_info));
 
   GST_DEBUG ("Leave initialize_params cevidenc1");
   return TRUE;
@@ -166,7 +169,7 @@ gst_ce_videnc1_implement_create (GstCEBaseEncoder * base_encoder)
 
   GST_DEBUG ("Enter _create cevidenc1");
   gboolean ret;
-  
+
   /* Check for the entry values */
   if (base_encoder->engine_handle == NULL) {
     GST_WARNING_OBJECT (base_encoder, "Engine handle is null");
@@ -202,11 +205,13 @@ gst_ce_videnc1_implement_create (GstCEBaseEncoder * base_encoder)
 
 
 /* Implementation of process_sync for encode the buffer in a synchronous way */
-static gboolean
+static GstBuffer *
 gst_ce_videnc1_implement_process_sync (GstCEBaseEncoder * base_encoder,
     GstBuffer * input_buffer, GstBuffer * output_buffer)
-{ 
-    IVIDEO1_BufDescIn inBufDesc;
+{
+
+  GstBuffer *encoded_buffer = NULL;
+  IVIDEO1_BufDescIn inBufDesc;
   XDM_BufDesc outBufDesc;
   VIDENC1_InArgs *inArgs;
   VIDENC1_OutArgs *outArgs;
@@ -229,20 +234,21 @@ gst_ce_videnc1_implement_process_sync (GstCEBaseEncoder * base_encoder,
 
   /* Prepare the input buffer descriptor for the encode process */
   inBufDesc.frameWidth =
-      GST_VIDEO_INFO_WIDTH (&GST_CE_BASE_VIDEO_ENCODER (base_encoder)->
-      video_info);
+      GST_VIDEO_INFO_WIDTH (&GST_CE_BASE_VIDEO_ENCODER
+      (base_encoder)->video_info);
   inBufDesc.frameHeight =
-      GST_VIDEO_INFO_HEIGHT (&GST_CE_BASE_VIDEO_ENCODER (base_encoder)->
-      video_info);
+      GST_VIDEO_INFO_HEIGHT (&GST_CE_BASE_VIDEO_ENCODER
+      (base_encoder)->video_info);
   inBufDesc.framePitch =
-      GST_VIDEO_INFO_PLANE_STRIDE (&GST_CE_BASE_VIDEO_ENCODER (base_encoder)->
-      video_info, 0);
+      GST_VIDEO_INFO_PLANE_STRIDE (&GST_CE_BASE_VIDEO_ENCODER
+      (base_encoder)->video_info, 0);
 
   /* The next piece of code depend of the mime type of the buffer */
-  inBufDesc.bufDesc[0].bufSize = gst_buffer_get_size (input_buffer); 
+  inBufDesc.bufDesc[0].bufSize = gst_buffer_get_size (input_buffer);
   inBufDesc.bufDesc[0].buf = info_in.data;
   inBufDesc.bufDesc[1].bufSize = gst_buffer_get_size (input_buffer);
-  inBufDesc.bufDesc[1].buf = info_in.data + (inBufDesc.framePitch * inBufDesc.frameHeight);
+  inBufDesc.bufDesc[1].buf =
+      info_in.data + (inBufDesc.framePitch * inBufDesc.frameHeight);
   inBufDesc.numBufs = 2;
 
 
@@ -268,99 +274,100 @@ gst_ce_videnc1_implement_process_sync (GstCEBaseEncoder * base_encoder,
     GST_WARNING_OBJECT (base_encoder,
         "Incorrect sync encode process with extended error: 0x%x",
         (unsigned int) outArgs->extendedError);
-    return FALSE;
+    return NULL;
   }
-  
-  return TRUE;
+
+  /* Prepare the encoded_buffer  */
+  encoded_buffer = gst_buffer_new_and_alloc (outArgs->bytesGenerated);
+
+  gst_buffer_fill (encoded_buffer, 0, info_out.data, outArgs->bytesGenerated);
+
+  return encoded_buffer;
 }
 
 /* Implementation of process_async for encode the buffer in a asynchronous way */
-gboolean
+/*gboolean
 gst_ce_videnc1_implement_process_async (processAsyncArguments * arguments)
 {
+*/
 
-  
   /* Obtain the arguments */
-  GstCEBaseEncoder *base_encoder = (GstCEBaseEncoder * )arguments->base_encoder;
-  GstBuffer *input_buffer = (GstBuffer *)arguments->input_buffer;
-  GstBuffer *output_buffer = (GstBuffer *)arguments->output_buffer;
+ /* GstCEBaseEncoder *base_encoder = (GstCEBaseEncoder * )arguments->base_encoder;
+    GstBuffer *input_buffer = (GstBuffer *)arguments->input_buffer;
+    GstBuffer *output_buffer = (GstBuffer *)arguments->output_buffer;
 
-  GST_DEBUG_OBJECT (GST_CE_VIDENC1(base_encoder), "Enter implement_process_async base video encoder");
-  
-  IVIDEO1_BufDescIn inBufDesc;
-  XDM_BufDesc outBufDesc;
-  VIDENC1_InArgs *inArgs;
-  VIDENC1_OutArgs *outArgs;
+    GST_DEBUG_OBJECT (GST_CE_VIDENC1(base_encoder), "Enter implement_process_async base video encoder");
+    IVIDEO1_BufDescIn inBufDesc;
+    XDM_BufDesc outBufDesc;
+    VIDENC1_InArgs *inArgs;
+    VIDENC1_OutArgs *outArgs;
 
-  GstMapInfo info_in;
-  GstMapInfo info_out;
-  int outBufSizeArray[1];
-  int status;
+    GstMapInfo info_in;
+    GstMapInfo info_out;
+    int outBufSizeArray[1];
+    int status;
 
-  inArgs = (VIDENC1_InArgs *) base_encoder->submitted_input_arguments;
-  outArgs = (VIDENC1_OutArgs *) base_encoder->submitted_output_arguments;
-
+    inArgs = (VIDENC1_InArgs *) base_encoder->submitted_input_arguments;
+    outArgs = (VIDENC1_OutArgs *) base_encoder->submitted_output_arguments;
+  */
   /* Access the data of the input and output buffer */
-  if (!gst_buffer_map (input_buffer, &info_in, GST_MAP_WRITE)) {
-    GST_DEBUG_OBJECT (base_encoder, "Can't access data from input buffer");
-  }
-  if (!gst_buffer_map (output_buffer, &info_out, GST_MAP_WRITE)) {
-    GST_DEBUG_OBJECT (base_encoder, "Can't access data from output buffer");
-  }
-  
-  GstMemory *buffer_mem = info_in.memory;
-  GstAllocator *allocator = buffer_mem->allocator; 
-  
-  
+  /*if (!gst_buffer_map (input_buffer, &info_in, GST_MAP_WRITE)) {
+     GST_DEBUG_OBJECT (base_encoder, "Can't access data from input buffer");
+     }
+     if (!gst_buffer_map (output_buffer, &info_out, GST_MAP_WRITE)) {
+     GST_DEBUG_OBJECT (base_encoder, "Can't access data from output buffer");
+     }
+
+   */
   /* Prepare the input buffer descriptor for the encode process */
-  inBufDesc.frameWidth =
-      GST_VIDEO_INFO_WIDTH (&GST_CE_BASE_VIDEO_ENCODER (base_encoder)->
-      video_info);
-  inBufDesc.frameHeight =
-      GST_VIDEO_INFO_HEIGHT (&GST_CE_BASE_VIDEO_ENCODER (base_encoder)->
-      video_info);
-  inBufDesc.framePitch =
-      GST_VIDEO_INFO_PLANE_STRIDE (&GST_CE_BASE_VIDEO_ENCODER (base_encoder)->
-      video_info, 0);
-
+  /*inBufDesc.frameWidth =
+     GST_VIDEO_INFO_WIDTH (&GST_CE_BASE_VIDEO_ENCODER (base_encoder)->
+     video_info);
+     inBufDesc.frameHeight =
+     GST_VIDEO_INFO_HEIGHT (&GST_CE_BASE_VIDEO_ENCODER (base_encoder)->
+     video_info);
+     inBufDesc.framePitch =
+     GST_VIDEO_INFO_PLANE_STRIDE (&GST_CE_BASE_VIDEO_ENCODER (base_encoder)->
+     video_info, 0);
+   */
   /* The next piece of code depend of the mime type of the buffer */
-  inBufDesc.bufDesc[0].bufSize = gst_buffer_get_size (input_buffer);    
-  inBufDesc.bufDesc[0].buf = info_in.data;
-  inBufDesc.bufDesc[1].bufSize = gst_buffer_get_size (input_buffer);
-  inBufDesc.bufDesc[1].buf = info_in.data + (inBufDesc.framePitch * inBufDesc.frameHeight);
-  inBufDesc.numBufs = 2;
-
+  /*inBufDesc.bufDesc[0].bufSize = gst_buffer_get_size (input_buffer);    
+     inBufDesc.bufDesc[0].buf = info_in.data;  //buffer_in_meta_data->physical_address; 
+     inBufDesc.bufDesc[1].bufSize = gst_buffer_get_size (input_buffer);
+     inBufDesc.bufDesc[1].buf = info_in.data - (inBufDesc.framePitch * inBufDesc.frameHeight);
+     inBufDesc.numBufs = 2;
+   */
 
   /* Prepare the output buffer descriptor for the encode process */
-  outBufSizeArray[0] = gst_buffer_get_size (output_buffer);
-  outBufDesc.numBufs = 1;
-  outBufDesc.bufs = &(info_out.data);
-  outBufDesc.bufSizes = outBufSizeArray;
+  /*outBufSizeArray[0] = gst_buffer_get_size (output_buffer);
+     outBufDesc.numBufs = 1;
+     outBufDesc.bufs = &(info_out.data); //&(buffer_out_meta_data->physical_address); 
+     outBufDesc.bufSizes = outBufSizeArray; */
 
   /* Set output and input arguments for the encode process */
-  inArgs->size = sizeof (VIDENC1_InArgs);
-  inArgs->inputID = 1;
-  inArgs->topFieldFirstFlag = 1;
+  /*inArgs->size = sizeof (VIDENC1_InArgs);
+     inArgs->inputID = 1;
+     inArgs->topFieldFirstFlag = 1;
 
-  outArgs->size = sizeof (VIDENC1_OutArgs);
-
+     outArgs->size = sizeof (VIDENC1_OutArgs);
+   */
   /* Procees la encode and check for errors */
-  status =
-      VIDENC1_process (base_encoder->codec_handle, &inBufDesc, &outBufDesc,
-      inArgs, outArgs);
-  
-  if (status != VIDENC1_EOK) {
+ /* status =
+    VIDENC1_process (base_encoder->codec_handle, &inBufDesc, &outBufDesc,
+    inArgs, outArgs);
+
+    if (status != VIDENC1_EOK) {
 
     GST_WARNING_OBJECT (base_encoder,
-        "Incorrect async encode process with extended error: 0x%x",
-        (unsigned int) outArgs->extendedError);
+    "Incorrect async encode process with extended error: 0x%x",
+    (unsigned int) outArgs->extendedError);
     return FALSE;
-  }
-  
-  GST_DEBUG_OBJECT (GST_CE_VIDENC1(base_encoder), "Leave implement_process_async base video encoder");
-  
-  return TRUE;
-}
+    }
+
+    GST_DEBUG_OBJECT (GST_CE_VIDENC1(base_encoder), "Leave implement_process_async base video encoder");
+
+    return TRUE;
+    } */
 
 
 /* Implementation of alloc_params that alloc memory for static and dynamic params 
@@ -410,24 +417,25 @@ gst_ce_videnc1_default_alloc_params (GstCEBaseEncoder * base_encoder)
 static void
 gst_ce_videnc1_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
-{ 
-  VIDENC1_Params *params = GST_CE_BASE_ENCODER(object)->codec_params;
-  VIDENC1_DynamicParams *dynamic_params = GST_CE_BASE_ENCODER(object)->codec_dynamic_params;
+{
+  VIDENC1_Params *params = GST_CE_BASE_ENCODER (object)->codec_params;
+  VIDENC1_DynamicParams *dynamic_params =
+      GST_CE_BASE_ENCODER (object)->codec_dynamic_params;
   switch (prop_id) {
     case PROP_RATECONTROL:
-      params->rateControlPreset = g_value_get_int(value);
+      params->rateControlPreset = g_value_get_int (value);
       break;
     case PROP_ENCODINGPRESET:
-      params->encodingPreset = g_value_get_int(value);
+      params->encodingPreset = g_value_get_int (value);
       break;
     case PROP_MAXBITRATE:
-      params->maxBitRate = g_value_get_int(value);
+      params->maxBitRate = g_value_get_int (value);
       break;
     case PROP_TARGETBITRATE:
-      dynamic_params->targetBitRate = g_value_get_int(value);
+      dynamic_params->targetBitRate = g_value_get_int (value);
       break;
     case PROP_INTRAFRAMEINTERVAL:
-      dynamic_params->intraFrameInterval = g_value_get_int(value);
+      dynamic_params->intraFrameInterval = g_value_get_int (value);
       break;
     default:
       break;
@@ -439,24 +447,25 @@ static void
 gst_ce_videnc1_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec)
 {
-  
-  VIDENC1_Params *params = GST_CE_BASE_ENCODER(object)->codec_params;
-  VIDENC1_DynamicParams *dynamic_params = GST_CE_BASE_ENCODER(object)->codec_dynamic_params;
+
+  VIDENC1_Params *params = GST_CE_BASE_ENCODER (object)->codec_params;
+  VIDENC1_DynamicParams *dynamic_params =
+      GST_CE_BASE_ENCODER (object)->codec_dynamic_params;
   switch (prop_id) {
     case PROP_RATECONTROL:
-      g_value_set_int(value,params->rateControlPreset);
+      g_value_set_int (value, params->rateControlPreset);
       break;
     case PROP_ENCODINGPRESET:
-      g_value_set_int(value,params->encodingPreset);
+      g_value_set_int (value, params->encodingPreset);
       break;
     case PROP_MAXBITRATE:
-      g_value_set_int(value,params->maxBitRate);
+      g_value_set_int (value, params->maxBitRate);
       break;
     case PROP_TARGETBITRATE:
-      g_value_set_int(value,dynamic_params->targetBitRate);
+      g_value_set_int (value, dynamic_params->targetBitRate);
       break;
     case PROP_INTRAFRAMEINTERVAL:
-      g_value_set_int(value,dynamic_params->intraFrameInterval);
+      g_value_set_int (value, dynamic_params->intraFrameInterval);
       break;
     default:
       break;
@@ -465,54 +474,97 @@ gst_ce_videnc1_get_property (GObject * object, guint prop_id,
 
 
 /* Install properties own from video encoders  */
-void gst_ce_videnc1_install_properties(GObjectClass *gobject_class) {
-  g_object_class_install_property(gobject_class, PROP_RATECONTROL,
-        g_param_spec_int("ratecontrol",
-            "Rate Control Algorithm",
-            "Rate Control Algorithm to use:\n"
-            "\t\t\t 1 - Constant Bit Rate (CBR), for video conferencing\n"
-            "\t\t\t 2 - Variable Bit Rate (VBR), for storage\n"
-            "\t\t\t 3 - Two pass rate control for non real time applications\n"
-            "\t\t\t 4 - No Rate Control is used\n"
-            "\t\t\t 5 - User defined on extended parameters"
-            ,
-            1, 5, 1, G_PARAM_READWRITE));
-            
-    g_object_class_install_property(gobject_class, PROP_ENCODINGPRESET,
-        g_param_spec_int("encodingpreset",
-            "Encoding Preset Algorithm",
-            "Encoding Preset Algorithm to use:\n"
-            "\t\t\t 0 - Default (check codec documentation)\n"
-            "\t\t\t 1 - High Quality\n"
-            "\t\t\t 2 - High Speed\n"
-            "\t\t\t 3 - User defined on extended parameters"
-            ,
-            0, 3, 2, G_PARAM_READWRITE));
-            
-    g_object_class_install_property(gobject_class, PROP_MAXBITRATE,
-        g_param_spec_int("maxbitrate",
-            "Maximum bit rate",
-            "Maximum bit-rate to be supported in bits per second",
-            1000, 20000000, 6000000, G_PARAM_READWRITE));
-            
-    g_object_class_install_property(gobject_class, PROP_TARGETBITRATE,
-        g_param_spec_int("targetbitrate",
-            "Target bit rate",
-            "Target bit-rate in bits per second, should be <= than the maxbitrate",
-            1000, 20000000, 6000000, G_PARAM_READWRITE));
-            
-    g_object_class_install_property(gobject_class, PROP_INTRAFRAMEINTERVAL,
-        g_param_spec_int("intraframeinterval",
-            "Intra frame interval",
-            "Interval between two consecutive intra frames:\n"
-            "\t\t\t 0 - Only first I frame followed by all P frames\n"
-            "\t\t\t 1 - No inter frames (all intra frames)\n"
-            "\t\t\t 2 - Consecutive IP sequence (if no B frames)\n"
-            "\t\t\t N - (n-1) P sequences between I frames\n"
-            ,
-            0, G_MAXINT32, 30, G_PARAM_READWRITE));
+void
+gst_ce_videnc1_install_properties (GObjectClass * gobject_class)
+{
+  g_object_class_install_property (gobject_class, PROP_RATECONTROL,
+      g_param_spec_int ("ratecontrol",
+          "Rate Control Algorithm",
+          "Rate Control Algorithm to use:\n"
+          "\t\t\t 1 - Constant Bit Rate (CBR), for video conferencing\n"
+          "\t\t\t 2 - Variable Bit Rate (VBR), for storage\n"
+          "\t\t\t 3 - Two pass rate control for non real time applications\n"
+          "\t\t\t 4 - No Rate Control is used\n"
+          "\t\t\t 5 - User defined on extended parameters",
+          1, 5, 1, G_PARAM_READWRITE));
+
+  g_object_class_install_property (gobject_class, PROP_ENCODINGPRESET,
+      g_param_spec_int ("encodingpreset",
+          "Encoding Preset Algorithm",
+          "Encoding Preset Algorithm to use:\n"
+          "\t\t\t 0 - Default (check codec documentation)\n"
+          "\t\t\t 1 - High Quality\n"
+          "\t\t\t 2 - High Speed\n"
+          "\t\t\t 3 - User defined on extended parameters",
+          0, 3, 2, G_PARAM_READWRITE));
+
+  g_object_class_install_property (gobject_class, PROP_MAXBITRATE,
+      g_param_spec_int ("maxbitrate",
+          "Maximum bit rate",
+          "Maximum bit-rate to be supported in bits per second",
+          1000, 20000000, 6000000, G_PARAM_READWRITE));
+
+  g_object_class_install_property (gobject_class, PROP_TARGETBITRATE,
+      g_param_spec_int ("targetbitrate",
+          "Target bit rate",
+          "Target bit-rate in bits per second, should be <= than the maxbitrate",
+          1000, 20000000, 6000000, G_PARAM_READWRITE));
+
+  g_object_class_install_property (gobject_class, PROP_INTRAFRAMEINTERVAL,
+      g_param_spec_int ("intraframeinterval",
+          "Intra frame interval",
+          "Interval between two consecutive intra frames:\n"
+          "\t\t\t 0 - Only first I frame followed by all P frames\n"
+          "\t\t\t 1 - No inter frames (all intra frames)\n"
+          "\t\t\t 2 - Consecutive IP sequence (if no B frames)\n"
+          "\t\t\t N - (n-1) P sequences between I frames\n",
+          0, G_MAXINT32, 30, G_PARAM_READWRITE));
 }
 
+
+/* Function that generate the pps and the sps of the codec 
+ * with the specific params
+ * */
+static GstBuffer *
+gst_ce_videnc1_default_generate_header (GstCEVIDENC1 * videnc1_encoder)
+{
+
+  GstBuffer *header;
+  GstBuffer *input_buffer;
+  GstBuffer *output_buffer;
+
+  /* Set the params */
+  VIDENC1_DynamicParams *dynamic_params =
+      GST_CE_BASE_ENCODER (videnc1_encoder)->codec_dynamic_params;
+  dynamic_params->generateHeader = XDM_GENERATE_HEADER;
+  if (!gst_ce_videnc1_control (videnc1_encoder, XDM_SETPARAMS)) {
+    GST_WARNING_OBJECT (videnc1_encoder,
+        "Probles for set params for generate header");
+    return NULL;
+  }
+
+  /* Generate the header */
+  input_buffer = gst_buffer_new_and_alloc (100);        /* Dummy buffers */
+  output_buffer = gst_buffer_new_and_alloc (100);       /* Dummy buffers */
+  header =
+      gst_ce_videnc1_process_sync (videnc1_encoder, input_buffer,
+      output_buffer);
+  gst_buffer_unref (input_buffer);
+  gst_buffer_unref (output_buffer);
+
+  /* Reset to the params to the origina value */
+  dynamic_params->generateHeader = XDM_ENCODE_AU;
+  dynamic_params->forceFrame = XDM_ENCODE_AU;
+  gst_ce_videnc1_control (videnc1_encoder, XDM_SETPARAMS);
+
+  if (header == NULL) {
+    GST_WARNING_OBJECT (videnc1_encoder,
+        "Probles for generate header with the actual params");
+    return NULL;
+  }
+
+  return header;
+}
 
 
 static void
@@ -525,38 +577,32 @@ gst_ce_videnc1_class_init (GstCEVIDENC1Class * klass)
 
   GST_DEBUG_CATEGORY_INIT (gst_ce_videnc1_debug, "cevidenc1", 0,
       "Codec Engine VIDENC1 Class");
-  
-   GST_DEBUG ("ENTER");
-  
+
+  GST_DEBUG ("ENTER");
+
   /* Instance the class methods */
   klass->videnc1_initialize_params = gst_ce_videnc1_implement_initialize_params;
   klass->videnc1_control = gst_ce_videnc1_implement_control;
   klass->videnc1_delete = gst_ce_videnc1_implement_delete;
   klass->videnc1_create = gst_ce_videnc1_implement_create;
   klass->videnc1_process_sync = gst_ce_videnc1_implement_process_sync;
-  klass->videnc1_process_async = gst_ce_videnc1_implement_process_async;
   klass->videnc1_alloc_params = gst_ce_videnc1_default_alloc_params;
-  
+  klass->videnc1_generate_header = gst_ce_videnc1_default_generate_header;
+
   /* Override of heredity functions */
   gobject_class->set_property = gst_ce_videnc1_set_property;
   gobject_class->get_property = gst_ce_videnc1_get_property;
-  base_encoder_class->base_encoder_control = 
-     klass->videnc1_control;
-  base_encoder_class->base_encoder_delete =
-    klass->videnc1_delete;
-  base_encoder_class->base_encoder_create =
-    klass->videnc1_create;
-  base_encoder_class->base_encoder_process_async =
-    klass->videnc1_process_async;
-  base_encoder_class->base_encoder_process_sync =
-    klass->videnc1_process_sync;
+  base_encoder_class->base_encoder_control = klass->videnc1_control;
+  base_encoder_class->base_encoder_delete = klass->videnc1_delete;
+  base_encoder_class->base_encoder_create = klass->videnc1_create;
+  base_encoder_class->base_encoder_process_sync = klass->videnc1_process_sync;
   base_encoder_class->base_encoder_initialize_params =
-    klass->videnc1_initialize_params;
-  
+      klass->videnc1_initialize_params;
+
   /* Install properties for the class */
-  gst_ce_videnc1_install_properties(gobject_class);
-  
-   GST_DEBUG ("LEAVE");  
+  gst_ce_videnc1_install_properties (gobject_class);
+
+  GST_DEBUG ("LEAVE");
 }
 
 
@@ -585,7 +631,7 @@ gst_ce_videnc1_init (GstCEBaseEncoder * base_encoder,
 
   /* Allocate memory for the params and set some default values */
   gst_ce_videnc1_alloc_params (base_encoder);
-  
+
   GST_DEBUG ("Leave init videnc1");
 }
 
@@ -602,8 +648,8 @@ gst_ce_videnc1_dispose (GObject * gobject)
   GST_DEBUG_OBJECT (base_encoder, "LEAVE");
 
   /* Chain up to the parent class */
-  G_OBJECT_CLASS (&(CE_VIDENC1_GET_CLASS (gobject)->parent_class))->
-      dispose (gobject);
+  G_OBJECT_CLASS (&(CE_VIDENC1_GET_CLASS (gobject)->
+          parent_class))->dispose (gobject);
 }
 
 /* Obtain and register the type of the class */

@@ -37,6 +37,18 @@ G_BEGIN_DECLS
 typedef struct _GstCEBaseEncoder GstCEBaseEncoder;
 typedef struct _GstCEBaseEncoderClass GstCEBaseEncoderClass;
 typedef struct _processAsyncArguments processAsyncArguments;
+typedef struct _GstBufferCEImplementation GstBufferCEImplementation;
+
+struct _GstBufferCEImplementation {
+    GstCEBaseEncoder *base_encoder;
+};
+
+
+struct cmemSlice {
+    gint start;
+    gint end;
+    gint size;
+};
 
 /**
  * This is the base class for the CodecEngine based encoders
@@ -93,18 +105,25 @@ struct _GstCEBaseEncoder
   /* Output arguments of the encoder instance */
   gpointer submitted_output_arguments;
   
-  /* Thread for async encode process */
-  pthread_t *process_async_thread;
+  /* Mark that if the first buffer was encode */
+  gboolean first_buffer;
   
-  /* Arguments for the async encode process */
-  processAsyncArguments *process_async_arguments;
+  /* Caps that was suggest in the sink_query process */
+  GstCaps *suggest_caps;
   
-  /* Codec data for the encode */
-  gpointer codec_data;
+  /*********************/
+  /** Buffer managent **/
+  /*********************/
+  /* Minimun size for the out_buffers slice */
+  gint minSizeSlicePushOutBuf;
   
-  /* Mark of async process is active */
-  gboolean process_async_active;
-
+  /* List for control the free memory in  out_buffers*/
+  GList *freeSlices;
+  
+  /* Mutex for control the manipulation to out_buffers */
+  GMutex *freeMutex;
+  
+  
 };
 
 struct _GstCEBaseEncoderClass
@@ -122,6 +141,9 @@ struct _GstCEBaseEncoderClass
   gpointer (*base_encoder_encode) (GstCEBaseEncoder * base_encoder);
   gboolean (*base_encoder_init_codec) (GstCEBaseEncoder * base_encoder);
   gboolean (*base_encoder_finalize_codec) (GstCEBaseEncoder * base_encoder);
+  gboolean (*base_encoder_buffer_add_meta) (GstBuffer *buffer);
+  GstBuffer* (*base_encoder_post_process) (GstCEBaseEncoder * base_encoder, GstBuffer *buffer);
+  GstBuffer* (*base_encoder_pre_process) (GstCEBaseEncoder * base_encoder, GstBuffer *buffer);
 };
 
 
@@ -139,6 +161,15 @@ GType gst_ce_base_encoder_get_type (void);
 /*------------------*/
 /* Public functions */
 /*------------------*/
+
+#define gst_ce_base_encoder_pre_process(obj, buf) \
+  CE_BASE_ENCODER_GET_CLASS(obj)->base_encoder_pre_process(obj, buf)
+
+#define gst_ce_base_encoder_post_process(obj, buf) \
+  CE_BASE_ENCODER_GET_CLASS(obj)->base_encoder_post_process(obj, buf)
+
+#define gst_ce_base_encoder_buffer_add_meta(obj, buf) \
+  CE_BASE_ENCODER_GET_CLASS(obj)->base_encoder_buffer_add_meta(buf)
 
 #define gst_ce_base_encoder_finalize_codec(obj) \
   CE_BASE_ENCODER_GET_CLASS(obj)->base_encoder_finalize_codec(obj)
@@ -245,14 +276,14 @@ GType gst_ce_base_encoder_get_type (void);
 
 /**
  * @memberof _GstCEBaseEncoder
- * @brief Allocates output buffers for share efficiently with co-processors
+ * @brief Allocates buffers for share efficiently with co-processors
  * @details This function allocates GstBuffers that are contiguous on memory
  *  (have #_GstCMEMMeta). This buffers can be shrinked efficiently to re-use the
  *  limited-available contiguous memory.
  * @param base_encoder a pointer to a _GstCEBaseEncoder object
  * @param size the size of the buffer
  */
-GstBuffer *gst_ce_base_encoder_get_output_buffer (GstCEBaseEncoder *
+GstBuffer *gst_ce_base_encoder_get_cmem_buffer (GstCEBaseEncoder *
     base_encoder, gsize size);
 
 /**

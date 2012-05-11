@@ -25,6 +25,7 @@
 #include <ti/sdo/ce/Engine.h>
 #include <ti/sdo/ce/video1/videnc1.h>
 #include <gstcmemallocator.h>
+#include <gstcmemmeta.h>
 #include <string.h>
 
 #define GST_CAT_DEFAULT gst_ce_base_video_encoder_debug
@@ -84,20 +85,21 @@ gst_ce_base_video_encoder_default_sink_set_caps (GstCEBaseVideoEncoder *
     goto refuse_caps;
 
   video_encoder->video_info = info;
-  
+
   /* Free any previus definition of base atributes */
-  gst_ce_base_encoder_finalize_attributes(GST_CE_BASE_ENCODER(video_encoder));
-  
+  gst_ce_base_encoder_finalize_attributes (GST_CE_BASE_ENCODER (video_encoder));
+
   /* We are ready to init the codec */
-  if(!gst_ce_base_encoder_init_codec (video_encoder)) 
+  if (!gst_ce_base_encoder_init_codec (video_encoder))
     goto refuse_caps;
 
-  /* Fixate and set caps */
-  if(!gst_ce_base_video_encoder_fixate_src_caps (video_encoder, caps)) 
-    goto refuse_caps;
+
+  /* save the suggest caps for then update the caps */
+  GST_CE_BASE_ENCODER (video_encoder)->suggest_caps = caps;
 
   GST_DEBUG_OBJECT (video_encoder,
       "Leave default_sink_set_caps base video encoder");
+
   return TRUE;
 
   /* ERRORS */
@@ -180,12 +182,12 @@ gst_ce_base_video_encoder_default_sink_event (GstPad * pad, GstObject * parent,
       GstCaps *caps;
 
       gst_event_parse_caps (event, &caps);
-      
+
       /* Set src caps */
       res = gst_ce_base_video_encoder_sink_set_caps (video_encoder, caps);
       gst_event_unref (event);
-      
-      
+
+
       break;
     }
     default:
@@ -236,6 +238,37 @@ gst_ce_base_video_encoder_default_sink_query (GstPad * pad, GstObject * parent,
   return res;
 }
 
+/* Function for check if the Buffer is CMEM */
+gboolean
+gst_ce_base_video_is_cmem_buffer (GstCEBaseVideoEncoder * video_encoder,
+    GstBuffer * buffer)
+{
+
+  gboolean ret = FALSE;
+  gpointer state = NULL;
+
+  /* The first GstMeta correspond with the CMEM meta */
+  GstMeta *buffer_meta_data = gst_buffer_iterate_meta (buffer, &state);
+  if (buffer_meta_data != NULL) {
+    GstMetaInfo *buffer_meta_info = buffer_meta_data->info;
+    gchar *buffer_meta_type_name = g_type_name (buffer_meta_info->type);
+
+    /* Compare type name  */
+    if (strcmp (GST_CMEM_META, buffer_meta_type_name) == 0) {
+      GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers = buffer;
+      ret = TRUE;
+    } else {
+      GST_WARNING_OBJECT (video_encoder, "Buffer isn't CMEM");
+    }
+  } else {
+    GST_WARNING_OBJECT (video_encoder, "Can't obtain buffer meta info");
+  }
+
+
+  return ret;
+}
+
+
 /* Default implementation for _chain */
 static GstFlowReturn
 gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
@@ -249,6 +282,7 @@ gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
   GstClockTime start, end;
 
   GstMapInfo info_buffer;
+  GstMapInfo info_input_buffer;
   GstBuffer *buffer_in;
   GstBuffer *buffer_out;
   GstBuffer *buffer_push_out;
@@ -256,77 +290,59 @@ gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
   GstAllocator *buffer_allocator = NULL;
 
   start = gst_util_get_timestamp ();
-    
-  
-  /* Access the data from the entry buffer */
-  if (!gst_buffer_map (buffer, &info_buffer, GST_MAP_WRITE)) {
-    GST_WARNING_OBJECT (video_encoder, "Can't access data from buffer");
-  }
-  
-  
-  if(gst_buffer_n_memory(buffer) > 0) {
-    GstMemory *buffer_mem = info_buffer.memory;
-    GstAllocator *allocator = buffer_mem->allocator;
-    
-    /* Check if the memory of th entry buffer is contiguos memory */
-    if(strcmp(gst_allocator_get_memory_type(allocator), GST_ALLOCATOR_CMEM) == 0) {
-      GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers = buffer;
-      input_buffer_copied = TRUE;
-    }
-  }
-  
+
+  /* Check if the buffer is CMEM */
+  input_buffer_copied =
+      gst_ce_base_video_is_cmem_buffer (video_encoder, buffer);
+
+
+  /* Check for attributes that help in push_out_buffer managent */
+  /*if(GST_CE_BASE_ENCODER (video_encoder)->freeSlices == NULL) {
+     GST_CE_BASE_ENCODER (video_encoder)->minSizeSlicePushOutBuf = gst_buffer_get_size (buffer);
+     slice = g_malloc0(sizeof(struct cmemSlice));
+     slice->start = 0;
+     slice->end = GST_CE_BASE_ENCODER (video_encoder)->minSizeSlicePushOutBuf * 3;  3:default size for the out_pust_buffer */
+  /*slice->size = GST_CE_BASE_ENCODER (video_encoder)->minSizeSlicePushOutBuf * 3;
+     GST_CE_BASE_ENCODER (video_encoder)->freeMutex = g_mutex_new();
+     GST_CE_BASE_ENCODER (video_encoder)->freeSlices = g_list_append(
+     GST_CE_BASE_ENCODER (video_encoder)->freeSlices, slice);
+
+     }  */
+
   /* Check for the input_buffer */
   if (GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers == NULL) {
-      
-    /* Obtain the allocator for the new buffer */
-    buffer_allocator = gst_allocator_find ("ContiguosMemory");
-    if (buffer_allocator == NULL) {
-      GST_DEBUG_OBJECT (video_encoder, "Can't find the buffer allocator");
-    }
-    
-    /* Allocate the input buffer with alignment of 4 bytes and with default buffer size */
-    GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers =
-        gst_buffer_new_allocate (buffer_allocator, gst_buffer_get_size (buffer),
-        3);
 
-    if (GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers == NULL) {
-      GST_DEBUG_OBJECT (video_encoder,
-          "Memory couldn't be allocated for input buffer");
-    }
+    GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers =
+        gst_ce_base_encoder_get_cmem_buffer (GST_CE_BASE_ENCODER
+        (video_encoder), gst_buffer_get_size (buffer));
   }
-  
+
   /* Check for the output_buffer */
-  if(GST_CE_BASE_ENCODER (video_encoder)->submitted_output_buffers == NULL) {
-    
-    if(buffer_allocator == NULL) {
-      /* Obtain the allocator for the new buffer */
-      buffer_allocator = gst_allocator_find ("ContiguosMemory");
-      if (buffer_allocator == NULL) {
-        GST_DEBUG_OBJECT (video_encoder, "Can't find the buffer allocator");
-      }
-    }
-    
-    
-    /* Allocate the output buffer with alignment of 4 bytes */
+  if (GST_CE_BASE_ENCODER (video_encoder)->submitted_output_buffers == NULL) {
+
     GST_CE_BASE_ENCODER (video_encoder)->submitted_output_buffers =
-        gst_buffer_new_allocate (buffer_allocator, gst_buffer_get_size (buffer),
-        3);
-    if (GST_CE_BASE_ENCODER (video_encoder)->submitted_output_buffers == NULL) {
-      GST_DEBUG_OBJECT (video_encoder,
-          "Memory couldn't be allocated for output buffer");
-    }
-    
+        gst_ce_base_encoder_get_cmem_buffer (GST_CE_BASE_ENCODER
+        (video_encoder), gst_buffer_get_size (buffer));
+
   }
-  
+
   /* Check for copied the entry buffer */
-  if(input_buffer_copied == FALSE) {  
-    gst_buffer_fill (GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers, 
-      0, info_buffer.data, gst_buffer_get_size(buffer));
+  if (input_buffer_copied == FALSE) {
+
+    /* Access the data from the entry buffer */
+    if (!gst_buffer_map (buffer, &info_buffer, GST_MAP_WRITE)) {
+      GST_WARNING_OBJECT (video_encoder, "Can't access data from buffer");
+    }
+
+    gst_buffer_fill (GST_CE_BASE_ENCODER (video_encoder)->
+        submitted_input_buffers, 0, info_buffer.data,
+        gst_buffer_get_size (buffer));
   }
-  
+
   /* Encode the actual buffer */
-  buffer_push_out = gst_ce_base_encoder_encode (GST_CE_BASE_ENCODER (video_encoder));
-  
+  buffer_push_out =
+      gst_ce_base_encoder_encode (GST_CE_BASE_ENCODER (video_encoder));
+
   if (buffer_push_out == NULL) {
     /* Only obtain the next buffer */
     ret = GST_FLOW_OK;
@@ -341,13 +357,16 @@ gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
         -1);
 
     /* push the buffer and check for any error */
-    ret = gst_pad_push (GST_CE_BASE_ENCODER (video_encoder)->src_pad, buffer_push_out);
+    ret =
+        gst_pad_push (GST_CE_BASE_ENCODER (video_encoder)->src_pad,
+        buffer_push_out);
 
     if (GST_FLOW_OK != ret) {
-      GST_ERROR_OBJECT (video_encoder, "Push buffer return with error: %d", ret);
+      GST_ERROR_OBJECT (video_encoder, "Push buffer return with error: %d",
+          ret);
     }
   }
-  
+
   /* unref the original buffer */
   gst_buffer_unref (buffer);
 
@@ -364,9 +383,9 @@ gst_ce_base_video_encoder_class_init (GstCEBaseVideoEncoderClass *
   /* Init debug instance */
   GST_DEBUG_CATEGORY_INIT (gst_ce_base_video_encoder_debug,
       "cebasevideoencoder", 0, "CodecEngine base video encoder Class");
-   
-   GST_DEBUG ("ENTER");
-  
+
+  GST_DEBUG ("ENTER");
+
   /* Instance the class methods */
   video_encoder_class->video_encoder_chain =
       GST_DEBUG_FUNCPTR (gst_ce_base_video_encoder_default_chain);
@@ -378,12 +397,12 @@ gst_ce_base_video_encoder_class_init (GstCEBaseVideoEncoderClass *
       GST_DEBUG_FUNCPTR (gst_ce_base_video_encoder_default_sink_get_caps);
   video_encoder_class->video_encoder_sink_set_caps =
       GST_DEBUG_FUNCPTR (gst_ce_base_video_encoder_default_sink_set_caps);
-  
+
   /* Override heredity methods */
   gobject_class->set_property = gst_ce_base_video_encoder_set_property;
   gobject_class->get_property = gst_ce_base_video_encoder_get_property;
 
-  GST_DEBUG ("LEAVE"); 
+  GST_DEBUG ("LEAVE");
 }
 
 static void

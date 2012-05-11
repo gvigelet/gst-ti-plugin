@@ -22,6 +22,7 @@
 #include <gst/gst.h>
 #include <gst/video/video.h>
 #include <gstcebaseencoder.h>
+#include <gstcmemmeta.h>
 
 G_BEGIN_DECLS
 #define GST_TYPE_CE_BASE_VIDEO_ENCODER \
@@ -61,11 +62,13 @@ struct _GstCEBaseVideoEncoderClass
   gboolean (*video_encoder_sink_set_caps) (GstCEBaseVideoEncoder * video_encoder,
     GstCaps * caps);
   GstCaps *(*video_encoder_sink_get_caps) (GstPad * pad, GstCaps * filter);
-    gboolean (*video_encoder_fixate_src_caps) (GstCEBaseVideoEncoder * video_encoder,
-    GstCaps * filter);
+
 };
 
 GType gst_ce_base_video_encoder_get_type (void);
+
+gboolean gst_ce_base_video_is_cmem_buffer (GstCEBaseVideoEncoder *video_encoder, 
+  GstBuffer *buffer);
 
 /*---------------------*/
 /* Protected Functions */
@@ -86,8 +89,6 @@ GType gst_ce_base_video_encoder_get_type (void);
 #define gst_ce_base_video_encoder_sink_get_caps(obj, pad, filter) \
   CE_BASE_VIDEO_ENCODER_GET_CLASS(obj)->video_encoder_sink_get_caps(pad, filter)
 
-#define gst_ce_base_video_encoder_fixate_src_caps(obj, filter) \
-  CE_BASE_VIDEO_ENCODER_GET_CLASS(obj)->video_encoder_fixate_src_caps(obj, filter)
 
 /* Abstract Functions */
 

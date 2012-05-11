@@ -21,8 +21,9 @@
 
 #include "gstcmemmeta.h"
 
+/* Register the cmem meta */
 const GstMetaInfo *
-gst_cmem_meta_get_info (void)
+gst_cmem_meta_register (void)
 {
   static const GstMetaInfo *meta_info = NULL;
 
@@ -36,20 +37,29 @@ gst_cmem_meta_get_info (void)
   return meta_info;
 }
 
+/* Obtain the info from the cmem meta */
+const GstMetaInfo *
+gst_cmem_meta_get_info () {
+  
+  const GstMetaInfo *meta_info = gst_meta_get_info(GST_CMEM_META);
+  return meta_info;
+}
+
+
 gpointer
 gst_buffer_get_cmem_physical_address (GstBuffer * buffer)
 {
-  GstCMEMMeta *meta = gst_buffer_get_cmem_meta (buffer);
+  /*GstCMEMMeta *meta = gst_buffer_get_cmem_meta (buffer);
   if (meta != NULL)
     return meta->physical_address;
-  return NULL;
+  return NULL;*/
 }
 
 void
 gst_buffer_set_cmem_physical_address (GstBuffer * buffer, gpointer paddr)
 {
-  GstCMEMMeta *meta = gst_buffer_get_cmem_meta (buffer);
+  /*GstCMEMMeta *meta = gst_buffer_get_cmem_meta (buffer);
   if (meta == NULL)
     meta = gst_buffer_add_cmem_meta (buffer);
-  meta->physical_address = paddr;
+  meta->physical_address = paddr;*/
 }

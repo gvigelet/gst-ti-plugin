@@ -274,7 +274,7 @@ static GstFlowReturn
 gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
     GstBuffer * buffer)
 {
-
+  
   GstCEBaseVideoEncoder *video_encoder = GST_CE_BASE_VIDEO_ENCODER (parent);
   GST_DEBUG_OBJECT (video_encoder, "Enter default_chain base video encoder");
 
@@ -283,6 +283,7 @@ gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
 
   GstMapInfo info_buffer;
   GstMapInfo info_input_buffer;
+  GstMapInfo info_output_buffer;
   GstBuffer *buffer_in;
   GstBuffer *buffer_out;
   GstBuffer *buffer_push_out;
@@ -295,23 +296,8 @@ gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
   input_buffer_copied =
       gst_ce_base_video_is_cmem_buffer (video_encoder, buffer);
 
-
-  /* Check for attributes that help in push_out_buffer managent */
-  /*if(GST_CE_BASE_ENCODER (video_encoder)->freeSlices == NULL) {
-     GST_CE_BASE_ENCODER (video_encoder)->minSizeSlicePushOutBuf = gst_buffer_get_size (buffer);
-     slice = g_malloc0(sizeof(struct cmemSlice));
-     slice->start = 0;
-     slice->end = GST_CE_BASE_ENCODER (video_encoder)->minSizeSlicePushOutBuf * 3;  3:default size for the out_pust_buffer */
-  /*slice->size = GST_CE_BASE_ENCODER (video_encoder)->minSizeSlicePushOutBuf * 3;
-     GST_CE_BASE_ENCODER (video_encoder)->freeMutex = g_mutex_new();
-     GST_CE_BASE_ENCODER (video_encoder)->freeSlices = g_list_append(
-     GST_CE_BASE_ENCODER (video_encoder)->freeSlices, slice);
-
-     }  */
-
   /* Check for the input_buffer */
   if (GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers == NULL) {
-
     GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers =
         gst_ce_base_encoder_get_cmem_buffer (GST_CE_BASE_ENCODER
         (video_encoder), gst_buffer_get_size (buffer));
@@ -319,11 +305,26 @@ gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
 
   /* Check for the output_buffer */
   if (GST_CE_BASE_ENCODER (video_encoder)->submitted_output_buffers == NULL) {
-
+    
+    /* Config the total size of the output buffer */
+    if (GST_CE_BASE_ENCODER (video_encoder)->outBufSize == 0) {
+        GST_CE_BASE_ENCODER (video_encoder)->outBufSize = 
+          gst_buffer_get_size (buffer) * 3;
+    }
+       
+    /* Add the free memory slice to the list */
+    struct cmemSlice *slice = g_malloc0(sizeof(struct cmemSlice));  
+    slice->start = 0;
+    slice->end = GST_CE_BASE_ENCODER (video_encoder)->outBufSize;
+    slice->size = GST_CE_BASE_ENCODER (video_encoder)->outBufSize;
+    GST_CE_BASE_ENCODER (video_encoder)->freeMutex = g_mutex_new();
+    GST_CE_BASE_ENCODER (video_encoder)->freeSlices =  
+      g_list_append(GST_CE_BASE_ENCODER (video_encoder)->freeSlices, slice);
+    
+    /* Allocate the buffer */  
     GST_CE_BASE_ENCODER (video_encoder)->submitted_output_buffers =
         gst_ce_base_encoder_get_cmem_buffer (GST_CE_BASE_ENCODER
-        (video_encoder), gst_buffer_get_size (buffer));
-
+        (video_encoder), GST_CE_BASE_ENCODER (video_encoder)->outBufSize);    
   }
 
   /* Check for copied the entry buffer */
@@ -342,25 +343,23 @@ gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
   /* Encode the actual buffer */
   buffer_push_out =
       gst_ce_base_encoder_encode (GST_CE_BASE_ENCODER (video_encoder));
-
   if (buffer_push_out == NULL) {
     /* Only obtain the next buffer */
     ret = GST_FLOW_OK;
   } else {
-
-    /* Copy extra data from the original buffer to the push out buffer */
+    
     gst_buffer_copy_into (buffer_push_out, buffer, GST_BUFFER_COPY_META, 0,
         gst_buffer_get_size (buffer));
     gst_buffer_copy_into (buffer_push_out, buffer, GST_BUFFER_COPY_TIMESTAMPS,
         0, gst_buffer_get_size (buffer));
     gst_buffer_copy_into (buffer_push_out, buffer, GST_BUFFER_COPY_FLAGS, 0,
         -1);
-
+    
     /* push the buffer and check for any error */
     ret =
         gst_pad_push (GST_CE_BASE_ENCODER (video_encoder)->src_pad,
         buffer_push_out);
-
+    
     if (GST_FLOW_OK != ret) {
       GST_ERROR_OBJECT (video_encoder, "Push buffer return with error: %d",
           ret);
@@ -371,6 +370,7 @@ gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
   gst_buffer_unref (buffer);
 
   GST_DEBUG_OBJECT (video_encoder, "LEAVE");
+  
   return ret;
 }
 

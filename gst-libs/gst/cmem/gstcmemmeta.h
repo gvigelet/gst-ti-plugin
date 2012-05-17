@@ -26,6 +26,8 @@
 
 #include <xdc/std.h>
 #include <ti/sdo/ce/osal/Memory.h>
+#include <gstcebaseencoder.h>
+
 
 G_BEGIN_DECLS
 
@@ -43,6 +45,9 @@ struct _GstCMEMMeta
 
   /** physical_address of the buffer */
   gpointer physical_address;
+  
+  /* Object that management buffer */
+  GstCEBaseEncoder *base_encoder;
 };
 
 typedef struct _GstCMEMMeta GstCMEMMeta;

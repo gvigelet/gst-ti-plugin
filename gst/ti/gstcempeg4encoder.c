@@ -257,7 +257,7 @@ gst_ce_mpeg4_encoder_init (GstCEMPEG4Encoder * mpeg4_encoder)
 /* Function that override the post process method of the base class */
 static GstBuffer *
 gst_ce_mpeg4_encoder_override_post_process (GstCEBaseEncoder * base_encoder,
-    GstBuffer * buffer)
+    GstBuffer * buffer, GList **actual_free_slice)
 {
 
   GstBuffer *codec_data;
@@ -290,7 +290,10 @@ gst_ce_mpeg4_encoder_override_post_process (GstCEBaseEncoder * base_encoder,
     base_encoder->first_buffer = TRUE;
   }
 
-  /* don't modify the buffer */
+   /* Restore unused memory after encode */
+  gst_ce_base_encoder_restore_unused_memory(base_encoder, buffer, 
+    actual_free_slice);
+    
   return buffer;
 }
 

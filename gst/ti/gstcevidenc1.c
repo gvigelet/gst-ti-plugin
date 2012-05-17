@@ -253,7 +253,7 @@ gst_ce_videnc1_implement_process_sync (GstCEBaseEncoder * base_encoder,
 
 
   /* Prepare the output buffer descriptor for the encode process */
-  outBufSizeArray[0] = gst_buffer_get_size (output_buffer);
+  outBufSizeArray[0] = gst_buffer_get_size (input_buffer);
   outBufDesc.numBufs = 1;
   outBufDesc.bufs = &(info_out.data);
   outBufDesc.bufSizes = outBufSizeArray;
@@ -276,13 +276,12 @@ gst_ce_videnc1_implement_process_sync (GstCEBaseEncoder * base_encoder,
         (unsigned int) outArgs->extendedError);
     return NULL;
   }
+  
+  gst_buffer_unmap(output_buffer, &info_out);
+  base_encoder->memoryUsed = outArgs->bytesGenerated;
+  
 
-  /* Prepare the encoded_buffer  */
-  encoded_buffer = gst_buffer_new_and_alloc (outArgs->bytesGenerated);
-
-  gst_buffer_fill (encoded_buffer, 0, info_out.data, outArgs->bytesGenerated);
-
-  return encoded_buffer;
+  return output_buffer;
 }
 
 /* Implementation of process_async for encode the buffer in a asynchronous way */
@@ -550,7 +549,6 @@ gst_ce_videnc1_default_generate_header (GstCEVIDENC1 * videnc1_encoder)
       gst_ce_videnc1_process_sync (videnc1_encoder, input_buffer,
       output_buffer);
   gst_buffer_unref (input_buffer);
-  gst_buffer_unref (output_buffer);
 
   /* Reset to the params to the origina value */
   dynamic_params->generateHeader = XDM_ENCODE_AU;

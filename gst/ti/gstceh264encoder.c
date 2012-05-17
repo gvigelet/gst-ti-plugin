@@ -266,12 +266,16 @@ gst_ce_h264_install_properties (GObjectClass * gobject_class)
 /* Function that override the pre process method of the base class */
 static GstBuffer *
 gst_ce_h264_encoder_override_pre_process (GstCEBaseEncoder * base_encoder,
-    GstBuffer * buffer)
+    GstBuffer * buffer, GList **actual_free_slice)
 {
+
+   GST_DEBUG_OBJECT (GST_CE_H264_ENCODER (base_encoder),
+          "Entry");
 
   GstBuffer *codec_data;
   GstCaps *caps;
   gboolean set_caps_ret;
+  GstBuffer *output_buffer;
 
   if (base_encoder->first_buffer == FALSE) {
     /* fixate the caps */
@@ -286,7 +290,7 @@ gst_ce_h264_encoder_override_pre_process (GstCEBaseEncoder * base_encoder,
 
     /* Generate the codec data */
     codec_data = gst_ce_videnc1_generate_header (GST_CE_VIDENC1 (base_encoder));
-
+    
     /* Update the caps with the codec data */
     gst_caps_set_simple (caps, "codec_data", GST_TYPE_BUFFER, codec_data, NULL);
     set_caps_ret = gst_pad_set_caps (base_encoder->src_pad, caps);
@@ -294,15 +298,18 @@ gst_ce_h264_encoder_override_pre_process (GstCEBaseEncoder * base_encoder,
       GST_WARNING_OBJECT (GST_CE_H264_ENCODER (base_encoder),
           "Caps can't be set");
     }
-    gst_buffer_unref (codec_data);
+    //gst_buffer_unref (codec_data);
 
     base_encoder->first_buffer = TRUE;
   }
 
-
-
-  /* don't transform the buffer */
-  return buffer;
+  /* Obtain the slice of the output buffer to use */
+  output_buffer = gst_ce_base_encoder_get_output_buffer(base_encoder, actual_free_slice);
+  
+  GST_DEBUG_OBJECT (GST_CE_H264_ENCODER (base_encoder),
+          "Leave");
+  
+  return output_buffer;
 }
 
 /* class_init of the class */

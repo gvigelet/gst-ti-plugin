@@ -36,8 +36,11 @@ typedef struct
   guint8 *data;
   guint32 alloc_size;
   Memory_AllocParams alloc_params;
-//  guint32 physical_address;
+
 } GstMemoryCMEM;
+
+
+
 
 static void
 _cmem_mem_init (GstMemoryCMEM * mem, GstMemoryFlags flags,
@@ -69,9 +72,12 @@ _cmem_new_mem_block (gsize maxsize, gsize align, gsize offset, gsize size)
   mem->alloc_params.type = Memory_CONTIGPOOL;
   mem->alloc_params.flags = Memory_CACHED;
   mem->alloc_params.align = ((UInt) (align - 1));
+  mem->data = NULL;
+  if(size > 0) {
+    mem->data = (guint8 *) Memory_alloc (maxsize, &mem->alloc_params);
+  }
 
-  mem->data = (guint8 *) Memory_alloc (maxsize, &mem->alloc_params);
-  if (mem->data == NULL) {
+  if ((mem->data == NULL) && (size > 0)) {
     g_slice_free1 (sizeof (GstMemoryCMEM), mem);
     GST_DEBUG ("Error in allocated");
   } else {
@@ -79,6 +85,8 @@ _cmem_new_mem_block (gsize maxsize, gsize align, gsize offset, gsize size)
   }
   
   _cmem_mem_init (mem, 0, NULL, maxsize, mem->data, maxsize, offset, size);
+
+
   GST_DEBUG ("Leave _cmem_new_mem_block");
   return mem;
 }
@@ -106,7 +114,7 @@ static gboolean
 _cmem_unmap (GstMemoryCMEM * mem)
 {
   GST_DEBUG ("write-back cache for memory %p", mem);
-  Memory_cacheWb (mem->data, mem->mem.maxsize);
+  Memory_cacheWb(mem->data, mem->mem.maxsize);
   return TRUE;
 }
 
@@ -184,6 +192,13 @@ static void
 _priv_cmem_notify (gpointer user_data)
 {
   g_warning ("The cmem memory allocator was freed!");
+}
+
+
+void 
+gst_cmem_allocator_set_data(GstMemory * mem, guint8 *new_data) {
+  GstMemoryCMEM *cmem  = (GstMemoryCMEM *)mem;
+  cmem->data = new_data;
 }
 
 void

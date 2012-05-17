@@ -51,7 +51,8 @@ struct _GstCEMPEG4Encoder
 struct _GstCEMPEG4EncoderClass
 {
   GstCEVIDENC1Class parent_class;
-  GstBuffer* (*mpeg4_encoder_post_process) (GstCEBaseEncoder * base_encoder, GstBuffer *buffer);
+  GstBuffer* (*mpeg4_encoder_post_process) (GstCEBaseEncoder * base_encoder, GstBuffer *buffer, 
+    GList **actual_free_slice);
 };
 
 
@@ -61,8 +62,8 @@ struct _GstCEMPEG4EncoderClass
 /* Public methods ***/
 /*-------------------*/
 
-#define gst_ce_mpeg4_encoder_post_process(obj, buf) \
-  CE_MPEG4_ENCODER_GET_CLASS(GST_CE_MPEG4_ENCODER(obj))->mpeg4_encoder_post_process(obj, buf)
+#define gst_ce_mpeg4_encoder_post_process(obj, buf, actual_slice) \
+  CE_MPEG4_ENCODER_GET_CLASS(GST_CE_MPEG4_ENCODER(obj))->mpeg4_encoder_post_process(obj, buf, actual_slice)
 
 
 /* Auxiliar functions for the class

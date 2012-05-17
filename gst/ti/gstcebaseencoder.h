@@ -21,6 +21,7 @@
 
 #include <gst/gst.h>
 
+
 G_BEGIN_DECLS
 #define GST_TYPE_CE_BASE_ENCODER \
   (gst_ce_base_encoder_get_type())
@@ -114,12 +115,15 @@ struct _GstCEBaseEncoder
   /*********************/
   /** Buffer managent **/
   /*********************/
-  /* Minimun size for the out_buffers slice */
-  gint minSizeSlicePushOutBuf;
+  /* Memory uses in last encode process */
+  gint memoryUsed;
   
-  /* List for control the free memory in  out_buffers*/
+  /* Size of the complete ouput buffer */
+  gint outBufSize;
+    
+  /* First element of the list that control the free memory in out_buffers*/
   GList *freeSlices;
-  
+    
   /* Mutex for control the manipulation to out_buffers */
   GMutex *freeMutex;
   
@@ -142,8 +146,10 @@ struct _GstCEBaseEncoderClass
   gboolean (*base_encoder_init_codec) (GstCEBaseEncoder * base_encoder);
   gboolean (*base_encoder_finalize_codec) (GstCEBaseEncoder * base_encoder);
   gboolean (*base_encoder_buffer_add_meta) (GstBuffer *buffer);
-  GstBuffer* (*base_encoder_post_process) (GstCEBaseEncoder * base_encoder, GstBuffer *buffer);
-  GstBuffer* (*base_encoder_pre_process) (GstCEBaseEncoder * base_encoder, GstBuffer *buffer);
+  GstBuffer* (*base_encoder_post_process) (GstCEBaseEncoder * base_encoder, GstBuffer *buffer, 
+    GList **actual_free_slice);
+  GstBuffer* (*base_encoder_pre_process) (GstCEBaseEncoder * base_encoder, GstBuffer *buffer, 
+    GList **actual_free_slice);
 };
 
 
@@ -162,11 +168,11 @@ GType gst_ce_base_encoder_get_type (void);
 /* Public functions */
 /*------------------*/
 
-#define gst_ce_base_encoder_pre_process(obj, buf) \
-  CE_BASE_ENCODER_GET_CLASS(obj)->base_encoder_pre_process(obj, buf)
+#define gst_ce_base_encoder_pre_process(obj, buf, actual_slice) \
+  CE_BASE_ENCODER_GET_CLASS(obj)->base_encoder_pre_process(obj, buf, actual_slice)
 
-#define gst_ce_base_encoder_post_process(obj, buf) \
-  CE_BASE_ENCODER_GET_CLASS(obj)->base_encoder_post_process(obj, buf)
+#define gst_ce_base_encoder_post_process(obj, buf, actual_slice) \
+  CE_BASE_ENCODER_GET_CLASS(obj)->base_encoder_post_process(obj, buf, actual_slice)
 
 #define gst_ce_base_encoder_buffer_add_meta(obj, buf) \
   CE_BASE_ENCODER_GET_CLASS(obj)->base_encoder_buffer_add_meta(buf)
@@ -273,6 +279,13 @@ GType gst_ce_base_encoder_get_type (void);
 
 /* Auxiliar functions for the class
  * Work similar to public methods  */
+
+void 
+gst_ce_base_encoder_restore_unused_memory(GstCEBaseEncoder * base_encoder,
+    GstBuffer * buffer, GList **actual_free_slice);
+
+GstBuffer*
+gst_ce_base_encoder_get_output_buffer(GstCEBaseEncoder *base_encoder, GList **actual_free_slice);
 
 /**
  * @memberof _GstCEBaseEncoder

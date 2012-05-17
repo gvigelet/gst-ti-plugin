@@ -31,5 +31,8 @@
 
 void gst_cmem_allocator_initialize (void);
 
+void 
+gst_cmem_allocator_set_data(GstMemory * mem, guint8 *new_data);
+
 
 #endif

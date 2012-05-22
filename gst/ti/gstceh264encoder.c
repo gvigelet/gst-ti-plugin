@@ -75,8 +75,6 @@ gst_ce_h264_encoder_base_finalize (GstCEH264EncoderClass * klass)
 }
 
 
-
-
 /* Implementation of fix_src_caps depending of template src caps 
  * and src_peer caps */
 GstCaps *
@@ -89,16 +87,13 @@ gst_ce_h264_encoder_fixate_src_caps (GstCEBaseVideoEncoder * base_video_encoder,
       GST_CE_BASE_VIDEO_ENCODER (base_video_encoder);
   GstCEH264Encoder *h264_encoder = GST_CE_H264_ENCODER (base_video_encoder);
 
-  GstBuffer *codec_data;
-  GstBuffer *input_buffer;
-  GstBuffer *output_buffer;
   GstCaps *caps, *othercaps;
   GstCaps *template_caps;
   GstStructure *structure;
   GstStructure *other_structure;
-  GstStructure *actual_structure;
   const gchar *stream_format;
   const gchar *alignment;
+  gboolean caps_subset;
 
   GST_DEBUG_OBJECT (h264_encoder, "Enter fixate_src_caps h264 encoder");
 
@@ -116,7 +111,10 @@ gst_ce_h264_encoder_fixate_src_caps (GstCEBaseVideoEncoder * base_video_encoder,
     /* We got something useful */
     caps = othercaps;
   }
-
+  
+  /* Check is the width, height and framerate from suggest caps are valid */
+  caps_subset = gst_ce_base_video_encoder_is_valid_suggest_caps(filter, caps); 
+  
   if (!gst_caps_is_writable (caps)) {
     caps = gst_caps_make_writable (caps);
   }
@@ -143,14 +141,25 @@ gst_ce_h264_encoder_fixate_src_caps (GstCEBaseVideoEncoder * base_video_encoder,
     alignment = "nal";
     gst_structure_set (structure, "alignment", G_TYPE_STRING, alignment, NULL);
   }
-  /* Set the width, height and framerate */
-  gst_structure_set (structure, "width", G_TYPE_INT,
-      GST_VIDEO_INFO_WIDTH (&video_encoder->video_info), NULL);
-  gst_structure_set (structure, "height", G_TYPE_INT,
-      GST_VIDEO_INFO_HEIGHT (&video_encoder->video_info), NULL);
-  gst_structure_set (structure, "framerate", GST_TYPE_FRACTION,
-      GST_VIDEO_INFO_FPS_N (&video_encoder->video_info),
-      GST_VIDEO_INFO_FPS_D (&video_encoder->video_info), NULL);
+  
+  
+  
+  if(caps_subset == TRUE) {
+    /* Set the width, height and framerate */
+    gst_structure_set (structure, "width", G_TYPE_INT,
+        GST_VIDEO_INFO_WIDTH (&video_encoder->video_info), NULL);
+    gst_structure_set (structure, "height", G_TYPE_INT,
+        GST_VIDEO_INFO_HEIGHT (&video_encoder->video_info), NULL);
+    gst_structure_set (structure, "framerate", GST_TYPE_FRACTION,
+        GST_VIDEO_INFO_FPS_N (&video_encoder->video_info),
+        GST_VIDEO_INFO_FPS_D (&video_encoder->video_info), NULL);
+  }
+  else {
+    GST_WARNING_OBJECT (h264_encoder, "Suggest width, height or framerate don't valid");
+    return NULL;
+  }
+  
+  
 
   /* Save the specific decision for future use */
   h264_encoder->generate_bytestream =
@@ -201,13 +210,13 @@ gst_ce_h264_encoder_init (GstCEH264Encoder * h264_encoder)
   base_encoder->codec_name = "h264enc";
 
   /* Init the engine handler */
-  Engine_Error *engine_error;
+  Engine_Error *engine_error = NULL;
   GST_CE_BASE_ENCODER (h264_encoder)->engine_handle =
       Engine_open ("codecServer", NULL, engine_error);
 
   if (engine_error != Engine_EOK) {
     GST_WARNING_OBJECT (h264_encoder, "Problems in Engine_open with code: %d",
-        engine_error);
+        (int)engine_error);
   }
 
   GST_DEBUG_OBJECT (h264_encoder, "LEAVE");
@@ -264,13 +273,12 @@ gst_ce_h264_install_properties (GObjectClass * gobject_class)
 
 
 /* Function that override the pre process method of the base class */
-static GstBuffer *
-gst_ce_h264_encoder_override_pre_process (GstCEBaseEncoder * base_encoder,
-    GstBuffer * buffer, GList **actual_free_slice)
+GstBuffer *
+gst_ce_h264_encoder_pre_process (GstCEBaseEncoder * base_encoder,
+    GstBuffer * buffer, GList ** actual_free_slice)
 {
 
-   GST_DEBUG_OBJECT (GST_CE_H264_ENCODER (base_encoder),
-          "Entry");
+  GST_DEBUG_OBJECT (GST_CE_H264_ENCODER (base_encoder), "Entry");
 
   GstBuffer *codec_data;
   GstCaps *caps;
@@ -281,34 +289,33 @@ gst_ce_h264_encoder_override_pre_process (GstCEBaseEncoder * base_encoder,
     /* fixate the caps */
     caps =
         gst_ce_h264_encoder_fixate_src_caps (GST_CE_BASE_VIDEO_ENCODER
-        (base_encoder), base_encoder->suggest_caps);
+        (base_encoder), GST_CE_BASE_VIDEO_ENCODER(base_encoder)->sink_caps);
 
     if (caps == NULL) {
       GST_WARNING_OBJECT (GST_CE_H264_ENCODER (base_encoder),
-          "Problems for fixate the caps");
+          "Problems for fixate src caps");
     }
 
     /* Generate the codec data */
     codec_data = gst_ce_videnc1_generate_header (GST_CE_VIDENC1 (base_encoder));
-    
+
     /* Update the caps with the codec data */
     gst_caps_set_simple (caps, "codec_data", GST_TYPE_BUFFER, codec_data, NULL);
     set_caps_ret = gst_pad_set_caps (base_encoder->src_pad, caps);
     if (set_caps_ret == FALSE) {
       GST_WARNING_OBJECT (GST_CE_H264_ENCODER (base_encoder),
-          "Caps can't be set");
+          "Src caps can't be update");
     }
-    //gst_buffer_unref (codec_data);
 
     base_encoder->first_buffer = TRUE;
   }
 
   /* Obtain the slice of the output buffer to use */
-  output_buffer = gst_ce_base_encoder_get_output_buffer(base_encoder, actual_free_slice);
-  
-  GST_DEBUG_OBJECT (GST_CE_H264_ENCODER (base_encoder),
-          "Leave");
-  
+  output_buffer =
+      gst_ce_base_encoder_get_output_buffer (base_encoder, actual_free_slice);
+
+  GST_DEBUG_OBJECT (GST_CE_H264_ENCODER (base_encoder), "Leave");
+
   return output_buffer;
 }
 
@@ -322,22 +329,18 @@ gst_ce_h264_encoder_class_init (GstCEH264EncoderClass * klass)
 
   GObjectClass *gobject_class = (GObjectClass *) klass;
   GstElementClass *gstelement_class = GST_ELEMENT_CLASS (klass);
-  GstCEBaseVideoEncoderClass *video_encoder_class =
-      GST_CE_BASE_VIDEO_ENCODER_CLASS (klass);
 
   GST_DEBUG_CATEGORY_INIT (ceenc_h264, "ceenc_h264", 0,
       "CodecEngine h264 encoder");
 
   GST_DEBUG ("ENTER");
 
-  /* Instance the class methods */
-  klass->h264_encoder_pre_process = gst_ce_h264_encoder_override_pre_process;
-
   /* Override of heredity functions */
+  base_encoder_class->base_encoder_pre_process =
+      gst_ce_h264_encoder_pre_process;
   gobject_class->set_property = gst_ce_h264_encoder_set_property;
   gobject_class->get_property = gst_ce_h264_encoder_get_property;
-  base_encoder_class->base_encoder_pre_process =
-      klass->h264_encoder_pre_process;
+  
 
   gst_element_class_add_pad_template (gstelement_class,
       gst_static_pad_template_get (&gst_ce_h264_encoder_src_factory));

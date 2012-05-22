@@ -24,6 +24,7 @@
 #include <xdc/std.h>
 #include <ti/sdo/ce/Engine.h>
 #include <ti/sdo/ce/video1/videnc1.h>
+#include <ti/sdo/ce/CERuntime.h>
 
 GST_DEBUG_CATEGORY_STATIC (tiplugin);
 #define GST_CAT_DEFAULT tiplugin

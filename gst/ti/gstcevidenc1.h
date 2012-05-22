@@ -54,15 +54,6 @@ struct _GstCEVIDENC1
 struct _GstCEVIDENC1Class
 {
   GstCEBaseVideoEncoderClass parent_class;
-  
-  gboolean (*videnc1_initialize_params) (GstCEBaseEncoder * base_encoder);
-  gboolean (*videnc1_control) (GstCEBaseEncoder * base_encoder, gint cmd_id);
-  gboolean (*videnc1_delete) (GstCEBaseEncoder * base_encoder);
-  gboolean (*videnc1_create) (GstCEBaseEncoder * base_encoder);
-  GstBuffer* (*videnc1_process_sync) (GstCEBaseEncoder * base_encoder,
-    gpointer input_buffer, gpointer output_buffer);
-  gboolean (*videnc1_alloc_params) (GstCEBaseEncoder * base_encoder);
-  GstBuffer* (*videnc1_generate_header) (GstCEVIDENC1 * videnc1_encoder);
 
 };
 /* Macros that allow access to the method of the class */
@@ -71,26 +62,27 @@ struct _GstCEVIDENC1Class
 /* Public methods */
 /*-------------------*/
 
-#define gst_ce_videnc1_generate_header(obj) \
-  CE_VIDENC1_GET_CLASS(obj)->videnc1_generate_header(obj)
-  
-#define gst_ce_videnc1_initialize_params(obj) \
-  CE_VIDENC1_GET_CLASS(obj)->videnc1_initialize_params(obj)
-  
-#define gst_ce_videnc1_control(obj, cmd_id) \
-  CE_VIDENC1_GET_CLASS(obj)->videnc1_control(obj, cmd_id)
+GstBuffer *
+  gst_ce_videnc1_generate_header (GstCEVIDENC1 * videnc1_encoder);
 
-#define gst_ce_videnc1_delete(obj) \
-  CE_VIDENC1_GET_CLASS(obj)->videnc1_delete(obj)
+gboolean
+  gst_ce_videnc1_initialize_params (GstCEBaseEncoder * base_encoder);
 
-#define gst_ce_videnc1_create(obj) \
-  CE_VIDENC1_GET_CLASS(obj)->videnc1_create(obj)
+gboolean
+  gst_ce_videnc1_control (GstCEBaseEncoder * base_encoder, gint cmd_id);
 
-#define gst_ce_videnc1_process_sync(obj, in_buf, out_buf) \
-  CE_VIDENC1_GET_CLASS(obj)->videnc1_process_sync(obj, in_buf, out_buf)
+gboolean
+  gst_ce_videnc1_delete (GstCEBaseEncoder * base_encoder);
 
-#define gst_ce_videnc1_alloc_params(obj) \
-  CE_VIDENC1_GET_CLASS(obj)->videnc1_alloc_params(obj)
+gboolean
+  gst_ce_videnc1_create (GstCEBaseEncoder * base_encoder);
+
+GstBuffer*
+  gst_ce_videnc1_process_sync (GstCEBaseEncoder * base_encoder,
+    GstBuffer * input_buffer, GstBuffer * output_buffer);
+
+void
+  gst_ce_videnc1_alloc_params (GstCEBaseEncoder * base_encoder);
 
 
 /* Class functionality */

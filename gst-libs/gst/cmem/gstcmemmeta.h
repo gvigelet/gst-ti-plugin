@@ -44,7 +44,7 @@ struct _GstCMEMMeta
   GstMeta meta;
 
   /** physical_address of the buffer */
-  gpointer physical_address;
+  gint physical_address;
   
   /* Object that management buffer */
   GstCEBaseEncoder *base_encoder;

@@ -54,9 +54,7 @@ struct _GstCEH264Encoder
 struct _GstCEH264EncoderClass
 {
   GstCEVIDENC1Class parent_class;
-  GstBuffer* (*h264_encoder_pre_process) (GstCEBaseEncoder * base_encoder, GstBuffer *buffer, 
-    GList **actual_free_slice);
-  
+
 };
 
 /* Macros that allow access to the methods of the class */
@@ -65,8 +63,9 @@ struct _GstCEH264EncoderClass
 /* Public methods ***/
 /*-------------------*/
 
-#define gst_ce_h264_encoder_pre_process(obj, buf, actual_slice) \
-  CE_H264_ENCODER_GET_CLASS(GST_CE_H264_ENCODER(obj))->h264_encoder_pre_process(obj, buf, actual_slice)
+GstBuffer *
+gst_ce_h264_encoder_pre_process (GstCEBaseEncoder * base_encoder,
+    GstBuffer * buffer, GList ** actual_free_slice);
 
 
 /* Auxiliar functions for the class
@@ -75,8 +74,8 @@ struct _GstCEH264EncoderClass
 
 GType gst_ce_h264_encoder_get_type (void);
 
-GstCaps* gst_ce_h264_encoder_fixate_src_caps(GstCEBaseVideoEncoder * base_video_encoder,
-  GstCaps * filter);
+GstCaps *gst_ce_h264_encoder_fixate_src_caps (GstCEBaseVideoEncoder *
+    base_video_encoder, GstCaps * filter);
 
 
 G_END_DECLS

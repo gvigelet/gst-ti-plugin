@@ -140,8 +140,8 @@ gst_ce_mpeg4_encoder_generate_codec_data (GstBuffer * buffer)
 /* Implementation of fix_src_caps depending of template src caps 
  * and src_peer caps */
 GstCaps *
-gst_ce_mpeg4_encoder_fixate_src_caps (GstCEBaseVideoEncoder *
-    base_video_encoder, GstCaps * filter)
+gst_ce_mpeg4_encoder_fixate_src_caps (GstCEBaseVideoEncoder * base_video_encoder, 
+    GstCaps * filter)
 {
 
   GstCEBaseEncoder *base_encoder = GST_CE_BASE_ENCODER (base_video_encoder);
@@ -149,16 +149,11 @@ gst_ce_mpeg4_encoder_fixate_src_caps (GstCEBaseVideoEncoder *
       GST_CE_BASE_VIDEO_ENCODER (base_video_encoder);
   GstCEMPEG4Encoder *mpeg4_encoder = GST_CE_MPEG4_ENCODER (base_video_encoder);
 
-  GstBuffer *codec_data;
-  GstBuffer *input_buffer;
-  GstBuffer *output_buffer;
   GstCaps *caps, *othercaps;
   GstCaps *template_caps;
   GstStructure *structure;
   GstStructure *other_structure;
-  GstStructure *actual_structure;
-  const gchar *stream_format;
-  const gchar *alignment;
+  gboolean caps_subset;
 
   GST_DEBUG_OBJECT (mpeg4_encoder, "Enter fixate_src_caps mpeg4 encoder");
 
@@ -176,7 +171,14 @@ gst_ce_mpeg4_encoder_fixate_src_caps (GstCEBaseVideoEncoder *
     /* We got something useful */
     caps = othercaps;
   }
-
+  
+  /* Check is the width, height and framerate from suggest caps are valid */
+  caps_subset = gst_ce_base_video_encoder_is_valid_suggest_caps(filter, caps); 
+  
+  if (!gst_caps_is_writable (caps)) {
+    caps = gst_caps_make_writable (caps);
+  }
+  
   /* Check that the caps are fixated */
   if (!gst_caps_is_fixed (caps)) {
     gst_caps_fixate (caps);
@@ -188,14 +190,20 @@ gst_ce_mpeg4_encoder_fixate_src_caps (GstCEBaseVideoEncoder *
     return NULL;
   }
 
-  /* Set the width, height and framerate */
-  gst_structure_set (structure, "width", G_TYPE_INT,
-      GST_VIDEO_INFO_WIDTH (&video_encoder->video_info), NULL);
-  gst_structure_set (structure, "height", G_TYPE_INT,
-      GST_VIDEO_INFO_HEIGHT (&video_encoder->video_info), NULL);
-  gst_structure_set (structure, "framerate", GST_TYPE_FRACTION,
-      GST_VIDEO_INFO_FPS_N (&video_encoder->video_info),
-      GST_VIDEO_INFO_FPS_D (&video_encoder->video_info), NULL);
+  if(caps_subset == TRUE) {
+    /* Set the width, height and framerate */
+    gst_structure_set (structure, "width", G_TYPE_INT,
+        GST_VIDEO_INFO_WIDTH (&video_encoder->video_info), NULL);
+    gst_structure_set (structure, "height", G_TYPE_INT,
+        GST_VIDEO_INFO_HEIGHT (&video_encoder->video_info), NULL);
+    gst_structure_set (structure, "framerate", GST_TYPE_FRACTION,
+        GST_VIDEO_INFO_FPS_N (&video_encoder->video_info),
+        GST_VIDEO_INFO_FPS_D (&video_encoder->video_info), NULL);
+  }
+  else {
+    GST_WARNING_OBJECT (mpeg4_encoder, "Suggest width, height or framerate don't valid");
+    return NULL;
+  }
 
   GST_DEBUG_OBJECT (mpeg4_encoder, "Leave fixate_src_caps mpeg4 encoder");
   return caps;
@@ -241,13 +249,13 @@ gst_ce_mpeg4_encoder_init (GstCEMPEG4Encoder * mpeg4_encoder)
   base_encoder->codec_name = "mpeg4enc";
 
   /* Init the engine handler */
-  Engine_Error *engine_error;
+  Engine_Error *engine_error = NULL;
   GST_CE_BASE_ENCODER (mpeg4_encoder)->engine_handle =
       Engine_open ("codecServer", NULL, engine_error);
 
   if (engine_error != Engine_EOK) {
     GST_WARNING_OBJECT (mpeg4_encoder, "Problems in Engine_open with code: %d",
-        engine_error);
+        (int)engine_error);
   }
 
   GST_DEBUG_OBJECT (mpeg4_encoder, "LEAVE");
@@ -255,9 +263,9 @@ gst_ce_mpeg4_encoder_init (GstCEMPEG4Encoder * mpeg4_encoder)
 }
 
 /* Function that override the post process method of the base class */
-static GstBuffer *
-gst_ce_mpeg4_encoder_override_post_process (GstCEBaseEncoder * base_encoder,
-    GstBuffer * buffer, GList **actual_free_slice)
+GstBuffer *
+gst_ce_mpeg4_encoder_post_process (GstCEBaseEncoder * base_encoder,
+    GstBuffer * buffer, GList ** actual_free_slice)
 {
 
   GstBuffer *codec_data;
@@ -268,7 +276,7 @@ gst_ce_mpeg4_encoder_override_post_process (GstCEBaseEncoder * base_encoder,
     /* fixate the caps */
     caps =
         gst_ce_mpeg4_encoder_fixate_src_caps (GST_CE_BASE_VIDEO_ENCODER
-        (base_encoder), base_encoder->suggest_caps);
+        (base_encoder), GST_CE_BASE_VIDEO_ENCODER(base_encoder)->sink_caps);
     if (caps == NULL) {
       GST_WARNING_OBJECT (GST_CE_MPEG4_ENCODER (base_encoder),
           "Problems for fixate the caps");
@@ -290,10 +298,10 @@ gst_ce_mpeg4_encoder_override_post_process (GstCEBaseEncoder * base_encoder,
     base_encoder->first_buffer = TRUE;
   }
 
-   /* Restore unused memory after encode */
-  gst_ce_base_encoder_restore_unused_memory(base_encoder, buffer, 
-    actual_free_slice);
-    
+  /* Restore unused memory after encode */
+  gst_ce_base_encoder_restore_unused_memory (base_encoder, buffer,
+      actual_free_slice);
+
   return buffer;
 }
 
@@ -315,13 +323,9 @@ gst_ce_mpeg4_encoder_class_init (GstCEMPEG4EncoderClass * klass)
 
   GST_DEBUG ("ENTER");
 
-  /* Instance the class methods */
-  klass->mpeg4_encoder_post_process =
-      gst_ce_mpeg4_encoder_override_post_process;
-
   /* Override of heredity functions */
   base_encoder_class->base_encoder_post_process =
-      klass->mpeg4_encoder_post_process;
+      gst_ce_mpeg4_encoder_post_process;
   gobject_class->set_property = gst_ce_mpeg4_encoder_set_property;
   gobject_class->get_property = gst_ce_mpeg4_encoder_get_property;
 

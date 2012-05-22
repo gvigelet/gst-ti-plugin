@@ -45,9 +45,12 @@ typedef struct _GstCEBaseVideoEncoderClass GstCEBaseVideoEncoderClass;
  * @extends _GstCEBaseEncoder
  */
 struct _GstCEBaseVideoEncoder
-{
+{ 
   GstCEBaseEncoder base_encoder;
   GstVideoInfo video_info;
+  
+  /* Caps that was set by the upstream element */
+  GstCaps *sink_caps;
   
 };
 
@@ -56,19 +59,24 @@ struct _GstCEBaseVideoEncoderClass
   GstCEBaseEncoderClass parent_class;
 
   GstFlowReturn (*video_encoder_chain) (GstPad * pad, GstObject * parent,
-    GstBuffer * buffer);
-  gboolean (*video_encoder_sink_event) (GstPad * pad, GstObject * parent, GstEvent * query);
-  gboolean (*video_encoder_sink_query) (GstPad * pad, GstObject * parent, GstQuery * query);
-  gboolean (*video_encoder_sink_set_caps) (GstCEBaseVideoEncoder * video_encoder,
-    GstCaps * caps);
+      GstBuffer * buffer);
+  gboolean (*video_encoder_sink_event) (GstPad * pad, GstObject * parent,
+      GstEvent * query);
+  gboolean (*video_encoder_sink_query) (GstPad * pad, GstObject * parent,
+      GstQuery * query);
+  gboolean (*video_encoder_sink_set_caps) (GstCEBaseVideoEncoder *
+      video_encoder, GstCaps * caps);
   GstCaps *(*video_encoder_sink_get_caps) (GstPad * pad, GstCaps * filter);
 
 };
 
 GType gst_ce_base_video_encoder_get_type (void);
 
-gboolean gst_ce_base_video_is_cmem_buffer (GstCEBaseVideoEncoder *video_encoder, 
-  GstBuffer *buffer);
+gboolean gst_ce_base_video_is_cmem_buffer (GstCEBaseVideoEncoder *
+    video_encoder, GstBuffer * buffer);
+
+gboolean
+gst_ce_base_video_encoder_valid_suggest_caps(GstCaps *subset, GstCaps *superset);
 
 /*---------------------*/
 /* Protected Functions */

@@ -36,6 +36,52 @@ enum
   PROP_0,
 };
 
+/* Calculate if the width, heigh and framerate of the sink_caps have a
+ * intersection with the suggest caps from downstream element */
+gboolean
+gst_ce_base_video_encoder_is_valid_suggest_caps(GstCaps *filter, GstCaps *caps) {
+  
+  const GValue *caps_width_range, *caps_heigh_range, *caps_framerate_range;
+  const GValue *filter_width_range, *filter_heigh_range, *filter_framerate_range;
+  GValue *intersect = NULL;
+  const GstStructure *caps_structure;
+  const GstStructure *filter_structure;
+  
+  caps_structure = gst_caps_get_structure (caps, 0);
+  if (caps_structure == NULL) {
+    GST_ERROR("Failed to get caps structure");
+    return FALSE;
+  }
+  filter_structure = gst_caps_get_structure (filter, 0);
+  if (filter_structure == NULL) {
+    GST_ERROR("Failed to get filter structure");
+    return FALSE;
+  }
+  /* Get the ranges */
+  caps_width_range = gst_structure_get_value(caps_structure, "width");
+  caps_heigh_range = gst_structure_get_value(caps_structure, "height");
+  caps_framerate_range = gst_structure_get_value(caps_structure, "framerate");
+  filter_width_range = gst_structure_get_value(filter_structure, "width");
+  filter_heigh_range = gst_structure_get_value(filter_structure, "height");
+  filter_framerate_range = gst_structure_get_value(filter_structure, "framerate");
+  
+  /* Search for any intersection */
+  if(!gst_value_intersect (intersect, caps_width_range,
+      filter_width_range)) {
+    return FALSE;
+  }
+  if(!gst_value_intersect (intersect, caps_heigh_range,
+      filter_heigh_range)) {
+    return FALSE;
+  }
+  if(!gst_value_intersect (intersect, caps_framerate_range,
+      filter_framerate_range)) {
+    return FALSE;
+  }
+  
+  return TRUE;
+}
+
 
 static void
 gst_ce_base_video_encoder_base_init (GstCEBaseVideoEncoderClass * klass)
@@ -77,7 +123,7 @@ gst_ce_base_video_encoder_default_sink_set_caps (GstCEBaseVideoEncoder *
 
   GST_DEBUG_OBJECT (video_encoder,
       "Entry default_sink_set_caps base video encoder");
-  gboolean ret;
+  
   GstVideoInfo info;
 
   /* get info from caps */
@@ -90,12 +136,12 @@ gst_ce_base_video_encoder_default_sink_set_caps (GstCEBaseVideoEncoder *
   gst_ce_base_encoder_finalize_attributes (GST_CE_BASE_ENCODER (video_encoder));
 
   /* We are ready to init the codec */
-  if (!gst_ce_base_encoder_init_codec (video_encoder))
+  if (!gst_ce_base_encoder_init_codec (GST_CE_BASE_ENCODER(video_encoder)))
     goto refuse_caps;
 
 
-  /* save the suggest caps for then update the caps */
-  GST_CE_BASE_ENCODER (video_encoder)->suggest_caps = caps;
+  /* save the caps for then update the caps */
+  video_encoder->sink_caps = caps;
 
   GST_DEBUG_OBJECT (video_encoder,
       "Leave default_sink_set_caps base video encoder");
@@ -117,21 +163,29 @@ gst_ce_base_video_encoder_default_sink_get_caps (GstPad * pad, GstCaps * filter)
 {
   GstCEBaseVideoEncoder *video_encoder =
       GST_CE_BASE_VIDEO_ENCODER (gst_pad_get_parent (pad));
-  GstCEBaseEncoder *base_encoder = GST_CE_BASE_ENCODER (video_encoder);
-  GstCaps *caps, *othercaps;
-  const GstCaps *templ;
+  GstCaps *caps_result, *sink_caps;
 
-  gint i, j;
-  GstStructure *structure = NULL;
-
-  /* If we already have caps return them */
-  if ((caps = gst_pad_get_current_caps (pad)) != NULL) {
-    goto done;
+  sink_caps = gst_pad_get_pad_template_caps (pad);
+  
+  if(filter) {
+    caps_result = gst_caps_intersect_full (filter, sink_caps, GST_CAPS_INTERSECT_FIRST);
   }
+  else {
+    caps_result = sink_caps;
+  }
+  
+  return caps_result;
+  
+  /* Intersect the caps */
+  
+  /* If we already have caps return them */
+  //if ((caps = gst_pad_get_current_caps (pad)) != NULL) {
+    //goto done;
+ // }
 
   /* we want to proxy properties like width, height and framerate from the 
      other end of the element */
-  othercaps = gst_pad_peer_query_caps (base_encoder->src_pad, filter);
+  /*othercaps = gst_pad_peer_query_caps (base_encoder->src_pad, filter);
   if (othercaps == NULL ||
       gst_caps_is_empty (othercaps) || gst_caps_is_any (othercaps)) {
     caps = gst_caps_copy (gst_pad_get_pad_template_caps (pad));
@@ -140,14 +194,14 @@ gst_ce_base_video_encoder_default_sink_get_caps (GstPad * pad, GstCaps * filter)
 
   caps = gst_caps_new_empty ();
   templ = gst_pad_get_pad_template_caps (pad);
-
+*/
   /* Set caps with peer caps values */
-  for (i = 0; i < gst_caps_get_size (templ); i++) {
+  //for (i = 0; i < gst_caps_get_size (templ); i++) {
     /* pick fields from peer caps */
-    for (j = 0; j < gst_caps_get_size (othercaps); j++) {
+    /*for (j = 0; j < gst_caps_get_size (othercaps); j++) {
       GstStructure *s = gst_caps_get_structure (othercaps, j);
       const GValue *val;
-
+      
       structure = gst_structure_copy (gst_caps_get_structure (templ, i));
       if ((val = gst_structure_get_value (s, "width")))
         gst_structure_set_value (structure, "width", val);
@@ -164,7 +218,7 @@ done:
   gst_caps_replace (&othercaps, NULL);
   gst_object_unref (video_encoder);
 
-  return caps;
+  return caps;*/
 }
 
 /* Default implementation for sink_event */
@@ -228,7 +282,7 @@ gst_ce_base_video_encoder_default_sink_query (GstPad * pad, GstObject * parent,
       break;
     }
     default:
-      /* Sent the query to all pads internally linked to "pad". */
+      /* Send the query to all pads internally linked to "pad". */
       res = gst_pad_query_default (pad, parent, query);
       break;
   }
@@ -244,28 +298,34 @@ gst_ce_base_video_is_cmem_buffer (GstCEBaseVideoEncoder * video_encoder,
     GstBuffer * buffer)
 {
 
-  gboolean ret = FALSE;
   gpointer state = NULL;
-
+  const GstMetaInfo *buffer_meta_info;
+  const gchar *buffer_meta_type_name;
+  
+  /* Check for the inputs of the function */
+  if(!GST_IS_BUFFER (buffer)) {
+    GST_WARNING_OBJECT (video_encoder, "Entry buffer isn't valid");
+  }
+  
   /* The first GstMeta correspond with the CMEM meta */
   GstMeta *buffer_meta_data = gst_buffer_iterate_meta (buffer, &state);
   if (buffer_meta_data != NULL) {
-    GstMetaInfo *buffer_meta_info = buffer_meta_data->info;
-    gchar *buffer_meta_type_name = g_type_name (buffer_meta_info->type);
+    buffer_meta_info = buffer_meta_data->info;
+    buffer_meta_type_name = g_type_name (buffer_meta_info->type);
 
     /* Compare type name  */
     if (strcmp (GST_CMEM_META, buffer_meta_type_name) == 0) {
-      GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers = buffer;
-      ret = TRUE;
+      return TRUE;
     } else {
       GST_WARNING_OBJECT (video_encoder, "Buffer isn't CMEM");
+      return FALSE;
     }
   } else {
     GST_WARNING_OBJECT (video_encoder, "Can't obtain buffer meta info");
+    return FALSE;
   }
 
-
-  return ret;
+  return TRUE;
 }
 
 
@@ -274,72 +334,65 @@ static GstFlowReturn
 gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
     GstBuffer * buffer)
 {
-  
+
   GstCEBaseVideoEncoder *video_encoder = GST_CE_BASE_VIDEO_ENCODER (parent);
   GST_DEBUG_OBJECT (video_encoder, "Enter default_chain base video encoder");
 
   int ret;
-  GstClockTime start, end;
-
   GstMapInfo info_buffer;
-  GstMapInfo info_input_buffer;
-  GstMapInfo info_output_buffer;
-  GstBuffer *buffer_in;
-  GstBuffer *buffer_out;
   GstBuffer *buffer_push_out;
-  gboolean input_buffer_copied = FALSE;
-  GstAllocator *buffer_allocator = NULL;
-
-  start = gst_util_get_timestamp ();
-
-  /* Check if the buffer is CMEM */
-  input_buffer_copied =
-      gst_ce_base_video_is_cmem_buffer (video_encoder, buffer);
-
-  /* Check for the input_buffer */
-  if (GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers == NULL) {
-    GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers =
-        gst_ce_base_encoder_get_cmem_buffer (GST_CE_BASE_ENCODER
-        (video_encoder), gst_buffer_get_size (buffer));
-  }
-
-  /* Check for the output_buffer */
-  if (GST_CE_BASE_ENCODER (video_encoder)->submitted_output_buffers == NULL) {
+  
+  /* Check if the entry buffer is CMEM */
+  if (!gst_ce_base_video_is_cmem_buffer (video_encoder, buffer)) {
     
-    /* Config the total size of the output buffer */
-    if (GST_CE_BASE_ENCODER (video_encoder)->outBufSize == 0) {
-        GST_CE_BASE_ENCODER (video_encoder)->outBufSize = 
-          gst_buffer_get_size (buffer) * 3;
+    /* Check for the input_buffer was allocate */
+    if (GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers == NULL) {
+      GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers =
+          gst_ce_base_encoder_get_cmem_buffer (GST_CE_BASE_ENCODER
+          (video_encoder), gst_buffer_get_size (buffer));
     }
-       
-    /* Add the free memory slice to the list */
-    struct cmemSlice *slice = g_malloc0(sizeof(struct cmemSlice));  
-    slice->start = 0;
-    slice->end = GST_CE_BASE_ENCODER (video_encoder)->outBufSize;
-    slice->size = GST_CE_BASE_ENCODER (video_encoder)->outBufSize;
-    GST_CE_BASE_ENCODER (video_encoder)->freeMutex = g_mutex_new();
-    GST_CE_BASE_ENCODER (video_encoder)->freeSlices =  
-      g_list_append(GST_CE_BASE_ENCODER (video_encoder)->freeSlices, slice);
     
-    /* Allocate the buffer */  
-    GST_CE_BASE_ENCODER (video_encoder)->submitted_output_buffers =
-        gst_ce_base_encoder_get_cmem_buffer (GST_CE_BASE_ENCODER
-        (video_encoder), GST_CE_BASE_ENCODER (video_encoder)->outBufSize);    
-  }
-
-  /* Check for copied the entry buffer */
-  if (input_buffer_copied == FALSE) {
-
     /* Access the data from the entry buffer */
     if (!gst_buffer_map (buffer, &info_buffer, GST_MAP_WRITE)) {
       GST_WARNING_OBJECT (video_encoder, "Can't access data from buffer");
     }
-
-    gst_buffer_fill (GST_CE_BASE_ENCODER (video_encoder)->
-        submitted_input_buffers, 0, info_buffer.data,
+  
+    /* Copy the entry buffer */
+    gst_buffer_fill (GST_CE_BASE_ENCODER
+        (video_encoder)->submitted_input_buffers, 0, info_buffer.data,
         gst_buffer_get_size (buffer));
+    
+    gst_buffer_unref (buffer);
   }
+  else {
+    /* Use the entry buffer */
+    GST_CE_BASE_ENCODER (video_encoder)->submitted_input_buffers = buffer;
+  }
+  
+  /* Check for the output_buffer */
+  if (GST_CE_BASE_ENCODER (video_encoder)->submitted_output_buffers == NULL) {
 
+    if (GST_CE_BASE_ENCODER (video_encoder)->outBufSize == 0) {
+      /* Default value for the out buffer size */
+      GST_CE_BASE_ENCODER (video_encoder)->outBufSize =
+          gst_buffer_get_size (buffer) * 3;
+    }
+
+    /* Add the free memory slice to the list */
+    struct cmemSlice *slice = g_malloc0 (sizeof (struct cmemSlice));
+    slice->start = 0;
+    slice->end = GST_CE_BASE_ENCODER (video_encoder)->outBufSize;
+    slice->size = GST_CE_BASE_ENCODER (video_encoder)->outBufSize;
+    GST_CE_BASE_ENCODER (video_encoder)->freeMutex = g_mutex_new ();
+    GST_CE_BASE_ENCODER (video_encoder)->freeSlices =
+        g_list_append (GST_CE_BASE_ENCODER (video_encoder)->freeSlices, slice);
+
+    /* Allocate the buffer */
+    GST_CE_BASE_ENCODER (video_encoder)->submitted_output_buffers =
+        gst_ce_base_encoder_get_cmem_buffer (GST_CE_BASE_ENCODER
+        (video_encoder), GST_CE_BASE_ENCODER (video_encoder)->outBufSize);
+  }
+  
   /* Encode the actual buffer */
   buffer_push_out =
       gst_ce_base_encoder_encode (GST_CE_BASE_ENCODER (video_encoder));
@@ -347,30 +400,27 @@ gst_ce_base_video_encoder_default_chain (GstPad * pad, GstObject * parent,
     /* Only obtain the next buffer */
     ret = GST_FLOW_OK;
   } else {
-    
+
     gst_buffer_copy_into (buffer_push_out, buffer, GST_BUFFER_COPY_META, 0,
         gst_buffer_get_size (buffer));
     gst_buffer_copy_into (buffer_push_out, buffer, GST_BUFFER_COPY_TIMESTAMPS,
         0, gst_buffer_get_size (buffer));
     gst_buffer_copy_into (buffer_push_out, buffer, GST_BUFFER_COPY_FLAGS, 0,
         -1);
-    
+
     /* push the buffer and check for any error */
     ret =
         gst_pad_push (GST_CE_BASE_ENCODER (video_encoder)->src_pad,
         buffer_push_out);
-    
+
     if (GST_FLOW_OK != ret) {
       GST_ERROR_OBJECT (video_encoder, "Push buffer return with error: %d",
           ret);
     }
   }
 
-  /* unref the original buffer */
-  gst_buffer_unref (buffer);
-
   GST_DEBUG_OBJECT (video_encoder, "LEAVE");
-  
+
   return ret;
 }
 

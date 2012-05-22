@@ -62,10 +62,10 @@ static const gchar *cmd_id_strings[] =
 
 /* Implementation for the control function, 
  * for obtain or set information of the codec instance after create it */
-static gboolean
-gst_ce_videnc1_implement_control (GstCEBaseEncoder * base_encoder, gint cmd_id)
+gboolean
+gst_ce_videnc1_control (GstCEBaseEncoder * base_encoder, gint cmd_id)
 {
-  GST_DEBUG_OBJECT (base_encoder,
+  GST_DEBUG_OBJECT (GST_CE_VIDENC1(base_encoder),
       "ENTER videnc1_control with command: %s cevidenc1",
       cmd_id_strings[cmd_id]);
   if (base_encoder->codec_handle != NULL) {
@@ -80,26 +80,25 @@ gst_ce_videnc1_implement_control (GstCEBaseEncoder * base_encoder, gint cmd_id)
         &encStatus);
 
     if (ret != VIDENC1_EOK) {
-      GST_WARNING_OBJECT (base_encoder,
+      GST_WARNING_OBJECT (GST_CE_VIDENC1(base_encoder),
           "Failure run control cmd: %s, status error %x",
           cmd_id_strings[cmd_id], (unsigned int) encStatus.extendedError);
       return FALSE;
     }
   } else {
-    GST_WARNING_OBJECT (base_encoder,
+    GST_WARNING_OBJECT (GST_CE_VIDENC1(base_encoder),
         "Not running control cmd since codec is not initialized");
   }
-  GST_DEBUG_OBJECT (base_encoder, "LEAVE videnc1_control cevidenc1");
+  GST_DEBUG_OBJECT (GST_CE_VIDENC1(base_encoder), "LEAVE videnc1_control cevidenc1");
   return TRUE;
 }
 
 
 
 /* Init the static and dynamic params for the codec instance */
-static gboolean
-gst_ce_videnc1_implement_initialize_params (GstCEBaseEncoder * base_encoder)
+gboolean
+gst_ce_videnc1_initialize_params (GstCEBaseEncoder * base_encoder)
 {
-
 
   GST_DEBUG ("Entry initialize_params cevidenc1");
 
@@ -148,8 +147,8 @@ gst_ce_videnc1_implement_initialize_params (GstCEBaseEncoder * base_encoder)
 }
 
 /* Delete the actual codec instance */
-static gboolean
-gst_ce_videnc1_implement_delete (GstCEBaseEncoder * base_encoder)
+gboolean
+gst_ce_videnc1_delete (GstCEBaseEncoder * base_encoder)
 {
   GST_DEBUG_OBJECT (base_encoder, "ENTER");
 
@@ -163,8 +162,8 @@ gst_ce_videnc1_implement_delete (GstCEBaseEncoder * base_encoder)
 }
 
 /* Create the codec instance and supply the dynamic params */
-static gboolean
-gst_ce_videnc1_implement_create (GstCEBaseEncoder * base_encoder)
+gboolean
+gst_ce_videnc1_create (GstCEBaseEncoder * base_encoder)
 {
 
   GST_DEBUG ("Enter _create cevidenc1");
@@ -205,12 +204,11 @@ gst_ce_videnc1_implement_create (GstCEBaseEncoder * base_encoder)
 
 
 /* Implementation of process_sync for encode the buffer in a synchronous way */
-static GstBuffer *
-gst_ce_videnc1_implement_process_sync (GstCEBaseEncoder * base_encoder,
+GstBuffer *
+gst_ce_videnc1_process_sync (GstCEBaseEncoder * base_encoder,
     GstBuffer * input_buffer, GstBuffer * output_buffer)
 {
 
-  GstBuffer *encoded_buffer = NULL;
   IVIDEO1_BufDescIn inBufDesc;
   XDM_BufDesc outBufDesc;
   VIDENC1_InArgs *inArgs;
@@ -218,7 +216,7 @@ gst_ce_videnc1_implement_process_sync (GstCEBaseEncoder * base_encoder,
 
   GstMapInfo info_in;
   GstMapInfo info_out;
-  int outBufSizeArray[1];
+  gint32 outBufSizeArray[1];
   int status;
 
   inArgs = (VIDENC1_InArgs *) base_encoder->submitted_input_arguments;
@@ -276,10 +274,10 @@ gst_ce_videnc1_implement_process_sync (GstCEBaseEncoder * base_encoder,
         (unsigned int) outArgs->extendedError);
     return NULL;
   }
-  
-  gst_buffer_unmap(output_buffer, &info_out);
+
+  gst_buffer_unmap (output_buffer, &info_out);
   base_encoder->memoryUsed = outArgs->bytesGenerated;
-  
+
 
   return output_buffer;
 }
@@ -371,8 +369,8 @@ gst_ce_videnc1_implement_process_async (processAsyncArguments * arguments)
 
 /* Implementation of alloc_params that alloc memory for static and dynamic params 
  * and set the default values of some params */
-static void
-gst_ce_videnc1_default_alloc_params (GstCEBaseEncoder * base_encoder)
+void
+gst_ce_videnc1_alloc_params (GstCEBaseEncoder * base_encoder)
 {
   GST_DEBUG_OBJECT (base_encoder, "ENTER");
   VIDENC1_Params *params;
@@ -524,8 +522,8 @@ gst_ce_videnc1_install_properties (GObjectClass * gobject_class)
 /* Function that generate the pps and the sps of the codec 
  * with the specific params
  * */
-static GstBuffer *
-gst_ce_videnc1_default_generate_header (GstCEVIDENC1 * videnc1_encoder)
+GstBuffer *
+gst_ce_videnc1_generate_header (GstCEVIDENC1 * videnc1_encoder)
 {
 
   GstBuffer *header;
@@ -578,24 +576,15 @@ gst_ce_videnc1_class_init (GstCEVIDENC1Class * klass)
 
   GST_DEBUG ("ENTER");
 
-  /* Instance the class methods */
-  klass->videnc1_initialize_params = gst_ce_videnc1_implement_initialize_params;
-  klass->videnc1_control = gst_ce_videnc1_implement_control;
-  klass->videnc1_delete = gst_ce_videnc1_implement_delete;
-  klass->videnc1_create = gst_ce_videnc1_implement_create;
-  klass->videnc1_process_sync = gst_ce_videnc1_implement_process_sync;
-  klass->videnc1_alloc_params = gst_ce_videnc1_default_alloc_params;
-  klass->videnc1_generate_header = gst_ce_videnc1_default_generate_header;
-
-  /* Override of heredity functions */
+  /* Implement of heredity functions */
+  base_encoder_class->base_encoder_control = gst_ce_videnc1_control;
+  base_encoder_class->base_encoder_delete = gst_ce_videnc1_delete;
+  base_encoder_class->base_encoder_create = gst_ce_videnc1_create;
+  base_encoder_class->base_encoder_process_sync = gst_ce_videnc1_process_sync;
+  base_encoder_class->base_encoder_initialize_params =
+      gst_ce_videnc1_initialize_params;
   gobject_class->set_property = gst_ce_videnc1_set_property;
   gobject_class->get_property = gst_ce_videnc1_get_property;
-  base_encoder_class->base_encoder_control = klass->videnc1_control;
-  base_encoder_class->base_encoder_delete = klass->videnc1_delete;
-  base_encoder_class->base_encoder_create = klass->videnc1_create;
-  base_encoder_class->base_encoder_process_sync = klass->videnc1_process_sync;
-  base_encoder_class->base_encoder_initialize_params =
-      klass->videnc1_initialize_params;
 
   /* Install properties for the class */
   gst_ce_videnc1_install_properties (gobject_class);
@@ -646,8 +635,8 @@ gst_ce_videnc1_dispose (GObject * gobject)
   GST_DEBUG_OBJECT (base_encoder, "LEAVE");
 
   /* Chain up to the parent class */
-  G_OBJECT_CLASS (&(CE_VIDENC1_GET_CLASS (gobject)->
-          parent_class))->dispose (gobject);
+  G_OBJECT_CLASS (&(CE_VIDENC1_GET_CLASS (gobject)->parent_class))->
+      dispose (gobject);
 }
 
 /* Obtain and register the type of the class */
